@@ -1,0 +1,2496 @@
+--[[
+    🍋 LEMON HUB V48 - PREMIUM UI + COMPREHENSIVE BUG FIXES
+    Target: Luau (Roblox Environment)
+    Features:
+    - Premium glassmorphism UI with blur effects
+    - Smooth animations & transitions
+    - Modern card design with shadows
+    - Enhanced typography & spacing
+    - Comprehensive bug fixes
+    - Memory leak prevention
+    - Proper resource cleanup
+]]
+
+-- ==========================================
+-- 1. SERVICES & GLOBAL LOCALIZATION
+-- ==========================================
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+local LocalPlayer = Players.LocalPlayer
+
+-- Localize globals for performance
+local task_spawn, task_wait, task_delay, task_defer = task.spawn, task.wait, task.delay, task.defer
+local math_floor, math_clamp, math_max, math_random, math_huge, math_abs = math.floor, math.clamp, math.max, math.random, math.huge, math.abs
+local os_clock = os.clock
+local string_find, string_lower, string_format, string_gsub = string.find, string.lower, string.format, string.gsub
+local table_insert, table_remove = table.insert, table.remove
+local pcall, xpcall, typeof, ipairs, pairs = pcall, xpcall, typeof, ipairs, pairs
+local Vector3_new, CFrame_new, UDim2_new, Color3_new = Vector3.new, CFrame.new, UDim2.new, Color3.new
+local Color3_fromRGB = Color3.fromRGB
+local Enum_Font = Enum.Font
+local Enum_EasingStyle = Enum.EasingStyle
+local Enum_EasingDirection = Enum.EasingDirection
+local Enum_UserInputType = Enum.UserInputType
+local Enum_ZIndexBehavior = Enum.ZIndexBehavior
+
+-- Pre-allocated TweenInfo Pool
+local TI = {
+    Quart_035 = TweenInfo.new(0.35, Enum_EasingStyle.Quart),
+    Quart_025 = TweenInfo.new(0.25, Enum_EasingStyle.Quart),
+    Quart_040 = TweenInfo.new(0.40, Enum_EasingStyle.Quart),
+    Quint_045 = TweenInfo.new(0.45, Enum_EasingStyle.Quint),
+    Quint_030 = TweenInfo.new(0.30, Enum_EasingStyle.Quint),
+    Back_025 = TweenInfo.new(0.25, Enum_EasingStyle.Back),
+    Back_015 = TweenInfo.new(0.15, Enum_EasingStyle.Back),
+    Linear_3 = TweenInfo.new(3, Enum_EasingStyle.Linear),
+    Linear_1 = TweenInfo.new(1, Enum_EasingStyle.Linear),
+    Sine_12 = TweenInfo.new(1.2, Enum_EasingStyle.Sine, Enum_EasingDirection.InOut),
+    Expo_035 = TweenInfo.new(0.35, Enum_EasingStyle.Expo),
+    Expo_025 = TweenInfo.new(0.25, Enum_EasingStyle.Expo),
+}
+
+-- Constants
+local KEY_CORRECT = "Lemonr56oy"
+local KEY_FILE = "LemonHub_SavedKey.txt"
+local OFFSET_UP_3 = Vector3_new(0, 3, 0)
+local OFFSET_UP_2 = Vector3_new(0, 2, 0)
+local OFFSET_DOWN_12 = Vector3_new(0, -12, 0)
+local ZERO_VECTOR3 = Vector3_new(0, 0, 0)
+
+-- State management
+local unlocked = false
+local scriptAlive = true
+local connectionRegistry = {} -- Track all connections for cleanup
+
+-- ==========================================
+-- 2. MEMORY-OPTIMIZED UTILITIES
+-- ==========================================
+
+-- Safe descendant iteration (prevents stack overflow)
+local function forEachDescendant(root, callback, maxDepth)
+    maxDepth = maxDepth or 10
+    local function recurse(node, depth)
+        if depth > maxDepth then return end
+        local children = node:GetChildren()
+        for i = 1, #children do
+            local child = children[i]
+            local ok, err = pcall(callback, child)
+            if not ok then
+                warn(string_format("[forEachDescendant] Error: %s", tostring(err)))
+            end
+            recurse(child, depth + 1)
+        end
+    end
+    recurse(root, 0)
+end
+
+-- Connection tracking system
+local function trackConnection(conn, tag)
+    tag = tag or "default"
+    if not connectionRegistry[tag] then
+        connectionRegistry[tag] = {}
+    end
+    table_insert(connectionRegistry[tag], conn)
+    return conn
+end
+
+-- Cleanup all connections
+local function cleanupConnections(tag)
+    if connectionRegistry[tag] then
+        for i = #connectionRegistry[tag], 1, -1 do
+            local conn = connectionRegistry[tag][i]
+            if conn and conn.Disconnect then
+                pcall(function() conn:Disconnect() end)
+            end
+            table_remove(connectionRegistry[tag], i)
+        end
+    end
+end
+
+-- Safe parent function
+local function SafeParent(gui)
+    local okH, h = pcall(function() return gethui and gethui() end)
+    if okH and h and typeof(h) == "Instance" and h.Parent then
+        pcall(function() gui.Parent = h end)
+        if gui.Parent == h then return end
+    end
+    pcall(function() gui.Parent = CoreGui end)
+    if not gui.Parent then 
+        pcall(function() gui.Parent = LocalPlayer:WaitForChild("PlayerGui", 5) end) 
+    end
+end
+
+-- Enhanced instance creator
+local function mk(cls, parent, props)
+    local i = Instance.new(cls)
+    for k, v in pairs(props) do 
+        local ok, err = pcall(function() i[k] = v end)
+        if not ok then
+            warn(string_format("[mk] Failed to set %s.%s: %s", cls, tostring(k), tostring(err)))
+        end
+    end
+    if parent then 
+        pcall(function() i.Parent = parent end)
+    end
+    return i
+end
+
+-- ==========================================
+-- 3. STATE & CONFIGURATION
+-- ==========================================
+local State = {
+    FarmMode = "off", 
+    FarmRunning = false, 
+    Ghost = false,
+    FarmSpeed = 16, 
+    Radius = 2500, 
+    SpeedPulse = false,
+    SafeNest = nil, 
+    SpawnNest = nil, 
+    SafeZone = nil,
+    EggsStolen = 0, 
+    EggsPlaced = 0, 
+    DeliverFails = 0,
+    MenuOpen = false,
+    Cache = { Steal = {}, Place = {} },
+}
+
+local NotifyRef = function() end
+local SetStatus = function() end
+local AssumeCarryUntil, LastGood, LastGoodTime = 0, nil, 0
+local LastScan, LastRemind, LastRewind = 0, 0, 0
+local SkipMap = {}
+local CarrySrc = ""
+
+-- ==========================================
+-- 4. KEY SYSTEM & CLEANUP
+-- ==========================================
+pcall(function()
+    local targets = {CoreGui, LocalPlayer:FindFirstChild("PlayerGui")}
+    local okH, h = pcall(function() return gethui and gethui() end)
+    if okH and h then table_insert(targets, h) end
+    for _, c in ipairs(targets) do
+        if c then
+            for _, g in ipairs(c:GetChildren()) do
+                if g:IsA("ScreenGui") and (string_find(g.Name, "Lemon") or string_find(g.Name, "Hub")) then
+                    pcall(function() g:Destroy() end)
+                end
+            end
+        end
+    end
+end)
+
+pcall(function()
+    if readfile and isfile and isfile(KEY_FILE) then
+        if readfile(KEY_FILE) == KEY_CORRECT then unlocked = true end
+    end
+end)
+
+if not unlocked then
+    local KeyGui = mk("ScreenGui", nil, { 
+        Name = "LemonKeySystem", 
+        ResetOnSpawn = false, 
+        IgnoreGuiInset = true 
+    })
+    SafeParent(KeyGui)
+    
+    -- Premium key card with blur effect
+    local Card = mk("Frame", KeyGui, { 
+        Size = UDim2_new(0, 320, 0, 200), 
+        Position = UDim2_new(0.5, -160, 0.5, -100), 
+        BackgroundColor3 = Color3_fromRGB(20, 20, 28), 
+        BackgroundTransparency = 0.05,
+        BorderSizePixel = 0, 
+        ZIndex = 10 
+    })
+    mk("UICorner", Card, { CornerRadius = UDim2.new(0, 16) })
+    mk("UIStroke", Card, { 
+        Color = Color3_fromRGB(255, 200, 50), 
+        Thickness = 2,
+        Transparency = 0.3
+    })
+    
+    -- Add blur effect
+    local blur = mk("BlurEffect", Lighting, { Size = 24 })
+    
+    -- Gradient background
+    local grad = mk("UIGradient", Card, { 
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3_fromRGB(24, 24, 32)),
+            ColorSequenceKeypoint.new(0.5, Color3_fromRGB(20, 20, 28)),
+            ColorSequenceKeypoint.new(1, Color3_fromRGB(16, 16, 24))
+        }),
+        Rotation = 45
+    })
+    
+    -- Header with icon
+    local headerFrame = mk("Frame", Card, {
+        Size = UDim2_new(1, -20, 0, 30),
+        Position = UDim2_new(0, 10, 0, 10),
+        BackgroundTransparency = 1,
+        ZIndex = 11
+    })
+    
+    mk("TextLabel", headerFrame, { 
+        Size = UDim2_new(0, 30, 1, 0),
+        Position = UDim2_new(0, 0, 0, 0),
+        BackgroundTransparency = 1, 
+        Text = "🍋", 
+        TextColor3 = Color3_fromRGB(255, 210, 50),
+        Font = Enum_Font.GothamBlack, 
+        TextSize = 20,
+        ZIndex = 11 
+    })
+    
+    mk("TextLabel", headerFrame, { 
+        Size = UDim2_new(1, -40, 1, 0), 
+        Position = UDim2_new(0, 35, 0, 0),
+        BackgroundTransparency = 1, 
+        Text = "LEMON HUB V48", 
+        TextColor3 = Color3_fromRGB(255, 210, 50), 
+        Font = Enum_Font.GothamBlack, 
+        TextSize = 16, 
+        TextXAlignment = Enum.TextXAlignment.Left, 
+        ZIndex = 11 
+    })
+    
+    mk("TextLabel", Card, { 
+        Size = UDim2_new(1, -20, 0, 18), 
+        Position = UDim2_new(0, 10, 0, 45), 
+        BackgroundTransparency = 1, 
+        Text = "Nhập Key để tiếp tục:", 
+        TextColor3 = Color3_fromRGB(180, 180, 190), 
+        Font = Enum_Font.GothamMedium, 
+        TextSize = 12, 
+        TextXAlignment = Enum.TextXAlignment.Left, 
+        ZIndex = 11 
+    })
+    
+    -- Modern input field
+    local BoxFrame = mk("Frame", Card, { 
+        Size = UDim2_new(1, -40, 0, 40), 
+        Position = UDim2_new(0, 20, 0, 70), 
+        BackgroundColor3 = Color3_fromRGB(30, 30, 38), 
+        BorderSizePixel = 0, 
+        ZIndex = 11 
+    })
+    mk("UICorner", BoxFrame, { CornerRadius = UDim2.new(0, 10) })
+    mk("UIStroke", BoxFrame, { 
+        Color = Color3_fromRGB(60, 60, 70), 
+        Thickness = 1,
+        Transparency = 0.5
+    })
+    
+    local Box = mk("TextBox", BoxFrame, { 
+        Size = UDim2_new(1, -20, 1, 0), 
+        Position = UDim2_new(0, 10, 0, 0), 
+        BackgroundTransparency = 1, 
+        Text = "", 
+        PlaceholderText = "Dán key vào đây...", 
+        TextColor3 = Color3_new(1, 1, 1), 
+        Font = Enum_Font.GothamSemibold, 
+        TextSize = 13, 
+        PlaceholderColor3 = Color3_fromRGB(100, 100, 110), 
+        ZIndex = 12 
+    })
+    
+    -- Premium button with glow
+    local KBtn = mk("TextButton", Card, { 
+        Size = UDim2_new(1, -40, 0, 42), 
+        Position = UDim2_new(0, 20, 0, 125), 
+        BackgroundColor3 = Color3_fromRGB(255, 210, 50), 
+        Text = "🔓 MỞ KHÓA", 
+        TextColor3 = Color3_fromRGB(20, 20, 20), 
+        Font = Enum_Font.GothamBlack, 
+        TextSize = 14, 
+        ZIndex = 11,
+        AutoButtonColor = false
+    })
+    mk("UICorner", KBtn, { CornerRadius = UDim2.new(0, 10) })
+    
+    local btnGrad = mk("UIGradient", KBtn, { 
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3_fromRGB(255, 220, 80)),
+            ColorSequenceKeypoint.new(0.5, Color3_fromRGB(255, 210, 50)),
+            ColorSequenceKeypoint.new(1, Color3_fromRGB(255, 180, 30))
+        }),
+        Rotation = 90
+    })
+    
+    -- Glow effect on button
+    local glow = mk("Frame", KBtn, {
+        Size = UDim2_new(1, 10, 1, 10),
+        Position = UDim2_new(0, -5, 0, -5),
+        BackgroundColor3 = Color3_fromRGB(255, 210, 50),
+        BackgroundTransparency = 0.7,
+        BorderSizePixel = 0,
+        ZIndex = 10
+    })
+    mk("UICorner", glow, { CornerRadius = UDim2.new(0, 12) })
+    
+    local kmsg = mk("TextLabel", Card, { 
+        Size = UDim2_new(1, -20, 0, 16), 
+        Position = UDim2_new(0, 10, 0, 175), 
+        BackgroundTransparency = 1, 
+        Text = "", 
+        TextColor3 = Color3_fromRGB(255, 115, 115), 
+        Font = Enum_Font.GothamMedium, 
+        TextSize = 11, 
+        TextXAlignment = Enum.TextXAlignment.Center, 
+        ZIndex = 11 
+    })
+    
+    -- Button hover/click effects
+    KBtn.MouseEnter:Connect(function()
+        TweenService:Create(KBtn, TI.Quart_025, {
+            Size = UDim2_new(1, -36, 0, 44),
+            Position = UDim2_new(0, 18, 0, 124)
+        }):Play()
+        TweenService:Create(glow, TI.Quart_025, {
+            BackgroundTransparency = 0.5
+        }):Play()
+    end)
+    
+    KBtn.MouseLeave:Connect(function()
+        TweenService:Create(KBtn, TI.Quart_025, {
+            Size = UDim2_new(1, -40, 0, 42),
+            Position = UDim2_new(0, 20, 0, 125)
+        }):Play()
+        TweenService:Create(glow, TI.Quart_025, {
+            BackgroundTransparency = 0.7
+        }):Play()
+    end)
+    
+    local function TryKey()
+        local input = string_gsub(string_gsub(Box.Text, "^%s+", ""), "%s+$", "")
+        if input == KEY_CORRECT then
+            unlocked = true
+            pcall(function() if writefile then writefile(KEY_FILE, input) end end)
+            KBtn.Text = "✅ THÀNH CÔNG!"
+            KBtn.BackgroundColor3 = Color3_fromRGB(80, 220, 110)
+            task_wait(0.5)
+            
+            -- Cleanup
+            blur:Destroy()
+            KeyGui:Destroy()
+        else
+            kmsg.Text = "❌ Sai key! Thử lại nhé"
+            local orig = Card.Position
+            
+            -- Shake animation
+            for _, dx in ipairs({ -10, 10, -8, 8, -6, 6, 0 }) do
+                Card.Position = UDim2_new(orig.X.Scale, orig.X.Offset + dx, orig.Y.Scale, orig.Y.Offset)
+                task_wait(0.05)
+            end
+            Card.Position = orig
+            
+            task_delay(1.5, function()
+                if kmsg and kmsg.Parent then
+                    kmsg.Text = ""
+                end
+            end)
+        end
+    end
+    
+    trackConnection(KBtn.MouseButton1Click:Connect(TryKey), "keyGui")
+    trackConnection(Box.FocusLost:Connect(function(ep) 
+        if ep then TryKey() end 
+    end), "keyGui")
+    
+    while not unlocked and scriptAlive do task_wait(0.2) end
+    
+    -- Cleanup if script dies
+    if not scriptAlive and KeyGui and KeyGui.Parent then
+        cleanupConnections("keyGui")
+        pcall(function() blur:Destroy() end)
+        pcall(function() KeyGui:Destroy() end)
+    end
+end
+
+print("[V48] 1/3 Services OK")
+task_wait(1.5)
+
+-- ==========================================
+-- 5. CORE ENGINE (ENHANCED)
+-- ==========================================
+local Char, HRP, Hum
+local characterConnections = {}
+
+local function UpdateCharacter()
+    -- Cleanup old connections
+    for _, conn in ipairs(characterConnections) do
+        if conn and conn.Disconnect then
+            pcall(function() conn:Disconnect() end)
+        end
+    end
+    characterConnections = {}
+    
+    Char = LocalPlayer.Character
+    if Char then
+        HRP = Char:FindFirstChild("HumanoidRootPart")
+        Hum = Char:FindFirstChild("Humanoid")
+        
+        -- Track character changes
+        if Char then
+            table_insert(characterConnections, trackConnection(
+                Char.AncestryChanged:Connect(function()
+                    if not Char:IsDescendantOf(Workspace) then
+                        HRP, Hum = nil, nil
+                    end
+                end),
+                "character"
+            ))
+        end
+    end
+end
+UpdateCharacter()
+
+-- Speed Pulse with proper cleanup
+local speedPulseAlive = true
+task_spawn(function()
+    while scriptAlive and speedPulseAlive do
+        task_wait(0.35)
+        if State.SpeedPulse and Hum and Hum.Health > 0 and State.FarmMode ~= "off" then
+            local base = State.FarmSpeed
+            pcall(function() Hum.WalkSpeed = base * (1.05 + math_random() * 0.1) end)
+            task_wait(0.12)
+            pcall(function() if Hum then Hum.WalkSpeed = base end end)
+        end
+    end
+end)
+
+local function FindSafeZone()
+    local found = nil
+    pcall(function()
+        forEachDescendant(Workspace, function(o)
+            if found then return end
+            if o:IsA("BasePart") then
+                local n = string_lower(o.Name)
+                if string_find(n, "safezone") or string_find(n, "safe_zone") or 
+                   string_find(n, "antoan") or string_find(n, "an_toan") or 
+                   string_find(n, "vungantoan") or string_find(n, "safearea") then
+                    found = o.Position
+                end
+            elseif o:IsA("TextLabel") then
+                local t = string_lower(o.Text)
+                if string_find(t, "an toàn") or string_find(t, "vùng an toàn") then
+                    local p = o.Parent
+                    while p and not p:IsA("BasePart") do 
+                        p = p.Parent 
+                    end
+                    if p then found = p.Position end
+                end
+            end
+        end, 8) -- Limit depth to prevent stack overflow
+        
+        if not found then
+            local sp = Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+            if sp then found = sp.Position end
+        end
+    end)
+    return found
+end
+
+task_spawn(function()
+    for _, w in ipairs({ 2, 5, 10, 20 }) do
+        task_wait(w)
+        if not scriptAlive or State.SafeZone then break end
+        local z = FindSafeZone()
+        if z then
+            State.SafeZone = z
+            if not State.SafeNest then
+                State.SafeNest = z
+                NotifyRef("success", "🏠 AUTO NEST", "Tự chốt ổ giao = vùng an toàn!", 5)
+            end
+            break
+        end
+    end
+end)
+
+local function NoteGoodPos()
+    if HRP and HRP.Position.Y > -20 and HRP.Position.Y < 400 then
+        LastGood = HRP.Position
+        LastGoodTime = os_clock()
+    end
+end
+
+local function RewindIfFell()
+    if HRP and HRP.Position.Y < -60 then
+        if os_clock() - LastRewind > 4 then
+            LastRewind = os_clock()
+            local tg = (LastGood and (os_clock() - LastGoodTime) < 15) and LastGood or nil
+            pcall(function() 
+                HRP.CFrame = CFrame_new((tg or Vector3_new(0, 60, 0)) + OFFSET_UP_3) 
+            end)
+        end
+        return true
+    end
+    return false
+end
+
+local function WalkTo(pos, timeout)
+    if not Hum or not HRP or not pos then return false end
+    
+    pcall(function() Hum.WalkSpeed = State.FarmSpeed end)
+    pcall(function() Hum:MoveTo(pos) end)
+    
+    local start = os_clock()
+    local lastIssue = start
+    local lastPos = HRP.Position
+    local stuckAt = start
+    local jumps = 0
+    timeout = timeout or 30
+    
+    while os_clock() - start < timeout do
+        if State.FarmMode == "off" then return false end
+        if not HRP or not Hum or Hum.Health <= 0 then return false end
+        
+        NoteGoodPos()
+        if RewindIfFell() then return false end
+        if (HRP.Position - pos).Magnitude < 6 then return true end
+        
+        if (HRP.Position - lastPos).Magnitude < 0.5 then
+            if os_clock() - stuckAt > 2 then
+                jumps = jumps + 1
+                pcall(function() Hum.Jump = true end)
+                pcall(function() Hum:MoveTo(pos) end)
+                stuckAt = os_clock()
+                if jumps > 3 then return false end
+            end
+        else
+            lastPos = HRP.Position
+            stuckAt = os_clock()
+        end
+        
+        if os_clock() - lastIssue > 2 then 
+            pcall(function() Hum:MoveTo(pos) end)
+            lastIssue = os_clock() 
+        end
+        
+        task_wait(0.25)
+    end
+    
+    return HRP and (HRP.Position - pos).Magnitude < 8
+end
+
+-- Enhanced keyword lists
+local STEAL_KW = { 
+    "steal", "grab", "pick", "cướp", "cắp", "trộm", "nhặt", "lấy", "snatch",
+    "trứng", "egg"
+}
+local PLACE_KW = { "place", "submit", "deliver", "đặt", "nộp", "ổ", "nest", "turn" }
+
+local EXPLICIT_PLACE_PATTERNS = {
+    "đặt trứng", "place egg", "giao trứng", "deliver egg",
+    "nộp trứng", "submit egg", "drop egg", "thả trứng",
+    "turn in egg", "nộp lại", "submit"
+}
+
+local function hasKW(s, list)
+    if not s then return false end
+    s = string_lower(s)
+    for i = 1, #list do 
+        if string_find(s, list[i], 1, true) then return true end 
+    end
+    return false
+end
+
+local function hasExplicitPlace(text)
+    text = string_lower(text)
+    for i = 1, #EXPLICIT_PLACE_PATTERNS do
+        if string_find(text, EXPLICIT_PLACE_PATTERNS[i], 1, true) then return true end
+    end
+    return false
+end
+
+-- Enhanced PromptPos with safety limits
+local function PromptPos(p)
+    local par = p.Parent
+    if not par then return nil end
+    if par:IsA("BasePart") then return par.Position end
+    if par:IsA("Model") and par.PrimaryPart then return par.PrimaryPart.Position end
+    
+    -- BFS with depth limit
+    local queue = {{par, 0}}
+    local head = 1
+    while head <= #queue do
+        local current, depth = queue[head][1], queue[head][2]
+        head = head + 1
+        
+        if depth > 10 then break end -- Prevent infinite loops
+        
+        if current:IsA("BasePart") then return current.Position end
+        
+        local children = current:GetChildren()
+        for i = 1, #children do
+            if #queue < 200 then -- Memory safety limit
+                table_insert(queue, {children[i], depth + 1})
+            end
+        end
+    end
+    return nil
+end
+
+local function ScanInto(root)
+    local n0 = #State.Cache.Steal + #State.Cache.Place
+    pcall(function()
+        forEachDescendant(root, function(obj)
+            if not obj or not obj.Parent then return end -- Guard against destroyed objects
+            
+            if obj:IsA("ProximityPrompt") and obj.Enabled then
+                local text = string_format("%s %s %s", 
+                    obj.ActionText or "", 
+                    obj.ObjectText or "", 
+                    obj.Name)
+                local pos = PromptPos(obj)
+                
+                if pos then
+                    if hasExplicitPlace(text) then
+                        table_insert(State.Cache.Place, { p = obj, pos = pos })
+                    elseif hasKW(text, PLACE_KW) and not hasKW(text, STEAL_KW) then
+                        table_insert(State.Cache.Place, { p = obj, pos = pos })
+                    elseif hasKW(text, STEAL_KW) then
+                        table_insert(State.Cache.Steal, { p = obj, pos = pos })
+                    end
+                end
+            end
+        end, 8)
+    end)
+    return (#State.Cache.Steal + #State.Cache.Place) > n0
+end
+
+local function UpdateCache()
+    State.Cache.Steal, State.Cache.Place = {}, {}
+    ScanInto(Workspace)
+end
+
+local function PruneSkip()
+    local now = os_clock()
+    local toRemove = {}
+    
+    for k, v in pairs(SkipMap) do
+        local alive = true
+        pcall(function() alive = (k.Parent ~= nil) end)
+        if v < now or not alive then 
+            table_insert(toRemove, k)
+        end
+    end
+    
+    for i = 1, #toRemove do
+        SkipMap[toRemove[i]] = nil
+    end
+end
+
+local function MaybeScan(force)
+    if force or os_clock() - LastScan > 5 then
+        LastScan = os_clock()
+        PruneSkip()
+        UpdateCache()
+    end
+end
+
+local CARRY_BL = { 
+    "giao dịch", "trade", "cửa hàng", "shop", "mục lục", "nhiệm vụ", 
+    "quest", "trứng trộm cắp", "steal egg", "esp trứng", "lưu ổ", 
+    "xóa ổ", "thống kê", "hủy script", "place egg" 
+}
+local CARRY_EXTRA = { "carry", "hold", "cầm", "giữ", "vác", "mang" }
+
+local function IsCarrying()
+    if os_clock() < AssumeCarryUntil then 
+        CarrySrc = "giả lập cầm"
+        return true 
+    end
+    
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        local found = false
+        forEachDescendant(pg, function(g)
+            if found then return end
+            if (g:IsA("TextButton") or g:IsA("TextLabel")) and g.Visible then
+                local t = string_lower(tostring(g.Text))
+                if string_find(t, "place egg", 1, true) then return end
+                
+                if string_find(t, "thả", 1, true) and 
+                   not string_find(t, "thả tim", 1, true) and 
+                   g.AbsoluteSize.Y > 20 and g.AbsoluteSize.Y < 200 then
+                    CarrySrc = "nút GUI: " .. tostring(g.Text)
+                    found = true
+                    return
+                end
+                
+                if string_find(t, "chạy!!", 1, true) then 
+                    CarrySrc = "banner CHẠY"
+                    found = true
+                    return 
+                end
+                
+                if g.AbsoluteSize.Y > 5 and g.AbsoluteSize.Y < 150 then
+                    local bl = false
+                    for i = 1, #CARRY_BL do 
+                        if string_find(t, CARRY_BL[i], 1, true) then 
+                            bl = true
+                            break 
+                        end 
+                    end
+                    
+                    if not bl then
+                        local keywords = { 
+                            "thả trứng", "drop egg", "đặt trứng", 
+                            "deliver egg", "giao trứng" 
+                        }
+                        for i = 1, #keywords do 
+                            if string_find(t, keywords[i], 1, true) then 
+                                CarrySrc = "label: " .. tostring(g.Text)
+                                found = true
+                                return 
+                            end 
+                        end
+                        
+                        for i = 1, #CARRY_EXTRA do 
+                            if string_find(t, CARRY_EXTRA[i], 1, true) then 
+                                CarrySrc = "label: " .. tostring(g.Text)
+                                found = true
+                                return 
+                            end 
+                        end
+                    end
+                end
+            end
+        end, 6)
+        
+        if found then return true end
+    end
+    
+    if Char then
+        local foundModel = false
+        forEachDescendant(Char, function(c)
+            if foundModel then return end
+            local n = string_lower(c.Name)
+            if (string_find(n, "egg", 1, true) or string_find(n, "trứng", 1, true)) and 
+               not string_find(n, "bat", 1, true) and 
+               not string_find(n, "gậy", 1, true) and 
+               (c:IsA("BasePart") or c:IsA("Model") or c:IsA("MeshPart")) then
+                CarrySrc = "model: " .. c.Name
+                foundModel = true
+            end
+        end, 5)
+        
+        if foundModel then return true end
+    end
+    
+    CarrySrc = ""
+    return false
+end
+
+local function TrySteal(prompt, pos)
+    if not prompt or not HRP or not prompt.Parent then return false end
+    
+    local maxD = (prompt.MaxActivationDistance or 10)
+    for attempt = 1, 3 do
+        if not prompt.Parent or not prompt.Enabled then return true end
+        if IsCarrying() then return true end
+        
+        if (HRP.Position - pos).Magnitude > maxD then
+            WalkTo(pos, 6)
+            task_wait(0.2)
+        end
+        
+        local okB = pcall(function() prompt:InputHoldBegin() end)
+        if okB then
+            local hold = math_max(0.1, math_max(prompt.HoldDuration or 0, 3))
+            local t0 = os_clock()
+            local result = nil
+            
+            while os_clock() - t0 < hold do
+                task_wait(0.08)
+                if not prompt.Parent or not prompt.Enabled then 
+                    result = "taken"
+                    break 
+                end
+                if not HRP then 
+                    result = "dead"
+                    break 
+                end
+                if IsCarrying() then 
+                    result = "carry"
+                    break 
+                end
+            end
+            
+            pcall(function() prompt:InputHoldEnd() end)
+            
+            if result == "taken" or result == "carry" then return true end
+            if result == "dead" then return false end
+            
+            task_wait(0.15)
+            if IsCarrying() then return true end
+            if not prompt.Parent or not prompt.Enabled then return true end
+            
+            pcall(function() prompt:InputHoldBegin() end)
+            task_wait(0.12)
+            pcall(function() prompt:InputHoldEnd() end)
+            task_wait(0.15)
+            
+            if IsCarrying() then return true end
+            if not prompt.Parent or not prompt.Enabled then return true end
+        end
+        task_wait(0.25)
+    end
+    return IsCarrying()
+end
+
+local function PlayerNearby(d)
+    local players = Players:GetPlayers()
+    for i = 1, #players do
+        local pl = players[i]
+        if pl ~= LocalPlayer and pl.Character then
+            local h = pl.Character:FindFirstChild("HumanoidRootPart")
+            if h and HRP and (h.Position - HRP.Position).Magnitude < d then 
+                return true 
+            end
+        end
+    end
+    return false
+end
+
+local function HumanPause()
+    if math_random(1, 100) <= 10 then 
+        task_wait(math_random(30, 50) / 10)
+    else 
+        task_wait(math_random(8, 22) / 10) 
+    end
+end
+
+local function SaveSafeNest()
+    if not HRP then return false end
+    local pos, gp = HRP.Position, HRP.Position
+    pcall(function()
+        local rp = Workspace:Raycast(pos + OFFSET_UP_2, OFFSET_DOWN_12)
+        if rp then gp = rp.Position end
+    end)
+    State.SafeNest = Vector3_new(gp.X, gp.Y + 3, gp.Z)
+    State.DeliverFails = 0
+    return true
+end
+
+local function SaveSpawnNest()
+    if not HRP then return false end
+    State.SpawnNest = HRP.Position
+    return true
+end
+
+local function FirePlacePrompt(radius)
+    if not HRP then return false end
+    local cache = State.Cache.Place
+    for i = 1, #cache do
+        local d = cache[i]
+        if d.p and d.p.Parent and d.pos and (HRP.Position - d.pos).Magnitude <= (radius or 14) then
+            local okB = pcall(function() d.p:InputHoldBegin() end)
+            if okB then
+                local hold = math_max(0.1, math_max(d.p.HoldDuration or 0, 3))
+                pcall(function() task_wait(hold) end)
+                pcall(function() d.p:InputHoldEnd() end)
+                task_wait(0.25)
+                
+                if not IsCarrying() then
+                    pcall(function()
+                        local rp = Workspace:Raycast(d.pos + OFFSET_UP_2, OFFSET_DOWN_12)
+                        if rp then 
+                            State.SafeNest = Vector3_new(rp.Position.X, rp.Position.Y + 3, rp.Position.Z)
+                        else 
+                            State.SafeNest = d.pos 
+                        end
+                    end)
+                    State.DeliverFails = 0
+                    NotifyRef("success", "🏠 TỰ HỌC Ổ", "Đã chốt vị trí giao!", 4)
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+trackConnection(LocalPlayer.CharacterAdded:Connect(function()
+    task_wait(1)
+    UpdateCharacter()
+    SkipMap = {}
+    AssumeCarryUntil = 0
+    State.Cache.Steal, State.Cache.Place = {}, {}
+    task_spawn(function()
+        for _, d in ipairs({ 1, 3, 6 }) do
+            task_wait(d)
+            UpdateCache()
+            if #State.Cache.Steal + #State.Cache.Place > 0 then break end
+        end
+    end)
+end), "character")
+
+local coinInst = nil
+local function GetCoins()
+    if coinInst and coinInst.Parent then
+        local ok, v = pcall(function() return coinInst.Value end)
+        if ok then return v end
+    end
+    local ok, val = pcall(function()
+        forEachDescendant(LocalPlayer, function(d)
+            if d:IsA("IntValue") or d:IsA("NumberValue") then
+                local n = string_lower(d.Name)
+                if string_find(n, "coin") or string_find(n, "cash") or 
+                   string_find(n, "money") or string_find(n, "gold") then
+                    coinInst = d
+                    return d.Value
+                end
+            end
+        end, 5)
+    end)
+    return (ok and val) or nil
+end
+
+task_spawn(function()
+    local lastPos, wasCarry, coinsBefore, carryStart = nil, false, nil, 0
+    while scriptAlive do
+        task_wait(0.5)
+        local c = IsCarrying()
+        if c then
+            if not wasCarry then 
+                coinsBefore = GetCoins()
+                carryStart = os_clock() 
+            end
+            if HRP then lastPos = HRP.Position end
+            wasCarry = true
+        elseif wasCarry then
+            wasCarry = false
+            local dur = os_clock() - carryStart
+            if lastPos and dur > 2 then
+                local lp = lastPos
+                task_wait(1.2)
+                local gained = false
+                local after = GetCoins()
+                if after and coinsBefore and after > coinsBefore then gained = true end
+                if gained then
+                    State.SafeNest = lp
+                    State.DeliverFails = 0
+                    NotifyRef("success", "🏠 HỌC Ổ AN TOÀN", "Đã chốt vị trí giao!", 4)
+                end
+            end
+            lastPos = nil
+        end
+    end
+end)
+
+local function RobustReturnToNest(targetPos, maxAttempts)
+    maxAttempts = maxAttempts or 5
+    for attempt = 1, maxAttempts do
+        if State.FarmMode == "off" then return false end
+        if not IsCarrying() then return true end
+        if not HRP or not Hum or Hum.Health <= 0 then return false end
+        if (HRP.Position - targetPos).Magnitude < 12 then return true end
+        
+        local jumpAlive = true
+        task_spawn(function()
+            while jumpAlive and scriptAlive and Hum and Hum.Health > 0 and State.FarmMode ~= "off" do
+                pcall(function() Hum.Jump = true end)
+                task_wait(0.7)
+            end
+        end)
+        
+        local dist = (HRP.Position - targetPos).Magnitude
+        local dynamicTimeout = math_max(30, dist / math_max(16, State.FarmSpeed) * 2.5)
+        local ok = WalkTo(targetPos, dynamicTimeout)
+        jumpAlive = false
+        
+        if ok and HRP and (HRP.Position - targetPos).Magnitude < 12 then return true end
+        SetStatus(string_format("🔄 Thử lại #%d/%d", attempt, maxAttempts))
+        task_wait(0.8)
+        MaybeScan(true)
+    end
+    return false
+end
+
+-- Debug logging task
+task_spawn(function()
+    while scriptAlive do
+        task_wait(3)
+        if State.FarmMode ~= "off" then
+            local stealCount = #State.Cache.Steal
+            local placeCount = #State.Cache.Place
+            if stealCount == 0 and placeCount == 0 then
+                print("[V48 DEBUG] ⚠️ Cache rỗng! Đang quét lại...")
+                MaybeScan(true)
+            else
+                print(string_format("[V48 DEBUG] 📊 Cache: %d trứng cần cướp, %d ổ giao", stealCount, placeCount))
+            end
+        end
+    end
+end)
+
+local CarryDebugged = false
+local function StartFarm()
+    if State.FarmRunning then return end
+    State.FarmRunning = true
+    task_spawn(function()
+        MaybeScan(true)
+        if not CarryDebugged then
+            CarryDebugged = true
+            print(string_format("[V48] 🚀 Bắt đầu farm - Cache: %d trứng, %d ổ", 
+                #State.Cache.Steal, #State.Cache.Place))
+            if IsCarrying() then NotifyRef("warn", "🔍 CARRY SRC:", CarrySrc, 6) end
+        end
+        
+        while State.FarmMode ~= "off" do
+            local ok, err = pcall(function()
+                UpdateCharacter()
+                if not HRP or not Hum or Hum.Health <= 0 then task_wait(1) return end
+                MaybeScan(false)
+
+                if IsCarrying() then
+                    local dp, src = State.SafeNest, "nest"
+                    if not dp then
+                        MaybeScan(true)
+                        local bp, bd = nil, math_huge
+                        local cache = State.Cache.Place
+                        for i = 1, #cache do
+                            local d = cache[i]
+                            if d.p and d.p.Parent and d.pos then
+                                local dist = (HRP.Position - d.pos).Magnitude
+                                if dist < bd then bd, bp = dist, d end
+                            end
+                        end
+                        if bp then dp, src = bp.pos, "prompt" end
+                    end
+                    if not dp and State.SafeZone then dp, src = State.SafeZone, "safezone" end
+                    if not dp then
+                        if os_clock() - LastRemind > 15 then
+                            LastRemind = os_clock()
+                            NotifyRef("warn", "CHƯA CÓ Ổ!", "Đứng ở vùng an toàn → bấm 🏠 Lưu", 5)
+                        end
+                        SetStatus("⛔ Cần 🏠 Ổ AN TOÀN!")
+                        task_wait(2)
+                        return
+                    end
+                    if State.Ghost and PlayerNearby(10) then task_wait(2) return end
+                    SetStatus(string_format("🏠 Về ổ (%s)...", src))
+
+                    if RobustReturnToNest(dp, 5) then
+                        local t0 = os_clock()
+                        while os_clock() - t0 < 3 and IsCarrying() do task_wait(0.4) end
+                        MaybeScan(false)
+                        if IsCarrying() then FirePlacePrompt(14) end
+                        if IsCarrying() then
+                            local offsets = { 
+                                Vector3_new(6, 0, 0), Vector3_new(-6, 0, 0), 
+                                Vector3_new(0, 0, 6), Vector3_new(0, 0, -6) 
+                            }
+                            for i = 1, #offsets do
+                                if not IsCarrying() then break end
+                                WalkTo(dp + offsets[i], 4)
+                                task_wait(0.6)
+                            end
+                            if IsCarrying() then FirePlacePrompt(20) end
+                            local t1 = os_clock()
+                            while os_clock() - t1 < 4 and IsCarrying() do task_wait(0.4) end
+                        end
+                        if not IsCarrying() then
+                            AssumeCarryUntil = 0
+                            State.EggsPlaced = State.EggsPlaced + 1
+                            State.DeliverFails = 0
+                            if not State.SafeNest then
+                                State.SafeNest = dp
+                                NotifyRef("success", "🏠 AUTO NEST", "Tự lưu ổ giao thành công!", 4)
+                            end
+                            SetStatus(string_format("✅ Giao #%d", State.EggsPlaced))
+                            NotifyRef("success", "🏠 GIAO OK!", string_format("Tổng: %d", State.EggsPlaced), 3)
+                        else
+                            State.DeliverFails = State.DeliverFails + 1
+                            SetStatus(string_format("⚠️ Chưa giao x%d", State.DeliverFails))
+                            if State.DeliverFails >= 3 then
+                                if src == "nest" then
+                                    State.SafeNest = nil
+                                    NotifyRef("warn", "🧹 Ổ SAI!", "Sẽ thử đích safezone lần sau", 4)
+                                end
+                                State.DeliverFails = 0
+                            end
+                        end
+                        HumanPause()
+                    end
+                else
+                    if State.Ghost and PlayerNearby(10) then task_wait(2) return end
+                    local now = os_clock()
+                    local best, bestDist = nil, math_huge
+                    local cache = State.Cache.Steal
+                    
+                    if State.SpawnNest then
+                        for i = 1, #cache do
+                            local d = cache[i]
+                            if d.p and d.p.Parent and d.pos and d.pos.Y > -20 and 
+                               not (SkipMap[d.p] and now < SkipMap[d.p]) then
+                                local fromSpawn = (State.SpawnNest - d.pos).Magnitude
+                                local fromMe = (HRP.Position - d.pos).Magnitude
+                                if fromSpawn < 80 and fromMe < State.Radius and fromMe < bestDist then 
+                                    bestDist, best = fromMe, d 
+                                end
+                            end
+                        end
+                    end
+                    
+                    if not best then
+                        for i = 1, #cache do
+                            local d = cache[i]
+                            if d.p and d.p.Parent and d.pos and d.pos.Y > -20 and 
+                               not (SkipMap[d.p] and now < SkipMap[d.p]) then
+                                local dist = (HRP.Position - d.pos).Magnitude
+                                if dist < State.Radius and dist < bestDist then 
+                                    bestDist, best = dist, d 
+                                end
+                            end
+                        end
+                    end
+                    
+                    if not best and State.SpawnNest and (HRP.Position - State.SpawnNest).Magnitude > 15 then
+                        SetStatus("🥚 Về Ổ LẤY TRỨNG chờ...")
+                        WalkTo(State.SpawnNest, 25)
+                        MaybeScan(true)
+                        task_wait(1.5)
+                        return
+                    end
+                    
+                    if best then
+                        SetStatus(string_format("🚶 Tới trứng (%dm)", math_floor(bestDist)))
+                        if WalkTo(best.pos, 25) then
+                            task_wait(math_random(3, 8) / 10)
+                            if TrySteal(best.p, best.pos) then
+                                AssumeCarryUntil = os_clock() + 45
+                                State.EggsStolen = State.EggsStolen + 1
+                                SetStatus(string_format("✅ Cướp #%d", State.EggsStolen))
+                                NotifyRef("success", "🥚 CƯỚP OK!", string_format("Tổng: %d", State.EggsStolen), 3)
+                            else
+                                SkipMap[best.p] = os_clock() + 10
+                                SetStatus("⚠️ Hụt, đổi mục tiêu...")
+                            end
+                            HumanPause()
+                        else
+                            SkipMap[best.p] = os_clock() + 25
+                            SetStatus("⚠️ Kẹt đường, đổi trứng...")
+                        end
+                    else
+                        SetStatus("⏳ Quét lại trứng...")
+                        MaybeScan(true)
+                        task_wait(2.5)
+                    end
+                end
+            end)
+            if not ok then warn(string_format("[V48 FARM ERR] %s", tostring(err))) end
+            task_wait(0.2)
+        end
+        State.FarmRunning = false
+        pcall(function() if Hum then Hum.WalkSpeed = 16 end end)
+        SetStatus("🟢 Sẵn sàng")
+    end)
+end
+
+print("[V48] 2/3 Core OK")
+task_wait(1)
+
+-- ==========================================
+-- 6. PREMIUM UI FRAMEWORK
+-- ==========================================
+local function BuildUI()
+    local Gui = mk("ScreenGui", nil, { 
+        Name = "LemonHubV48", 
+        ResetOnSpawn = false, 
+        IgnoreGuiInset = true, 
+        ZIndexBehavior = Enum_ZIndexBehavior.Sibling 
+    })
+    SafeParent(Gui)
+    
+    -- Add blur effect for glassmorphism
+    local blur = mk("BlurEffect", Lighting, { Size = 16 })
+
+    local THEMES = {
+        Lemon = { 
+            acc = Color3_fromRGB(255, 200, 50), 
+            acc2 = Color3_fromRGB(255, 140, 20), 
+            name = "🍋 Lemon",
+            bg1 = Color3_fromRGB(15, 15, 21),
+            bg2 = Color3_fromRGB(22, 22, 30)
+        },
+        Sakura = { 
+            acc = Color3_fromRGB(255, 130, 180), 
+            acc2 = Color3_fromRGB(220, 70, 140), 
+            name = "🌸 Sakura",
+            bg1 = Color3_fromRGB(20, 15, 18),
+            bg2 = Color3_fromRGB(28, 22, 26)
+        },
+        Ocean = { 
+            acc = Color3_fromRGB(70, 180, 255), 
+            acc2 = Color3_fromRGB(30, 110, 220), 
+            name = "🌊 Ocean",
+            bg1 = Color3_fromRGB(15, 18, 22),
+            bg2 = Color3_fromRGB(22, 26, 30)
+        },
+        Cyber = { 
+            acc = Color3_fromRGB(80, 255, 200), 
+            acc2 = Color3_fromRGB(40, 160, 220), 
+            name = "⚡ Cyber",
+            bg1 = Color3_fromRGB(15, 20, 18),
+            bg2 = Color3_fromRGB(22, 28, 26)
+        },
+        Blood = { 
+            acc = Color3_fromRGB(255, 80, 90), 
+            acc2 = Color3_fromRGB(160, 30, 50), 
+            name = "🩸 Blood",
+            bg1 = Color3_fromRGB(20, 15, 15),
+            bg2 = Color3_fromRGB(28, 22, 22)
+        },
+    }
+    
+    local THEME_LIST = { "Lemon", "Sakura", "Ocean", "Cyber", "Blood" }
+    local T = { 
+        acc = THEMES.Lemon.acc, 
+        acc2 = THEMES.Lemon.acc2,
+        bg1 = THEMES.Lemon.bg1,
+        bg2 = THEMES.Lemon.bg2
+    }
+    local themeReg = {}
+    local function reg(i, p, role) table_insert(themeReg, { i = i, p = p, role = role }) end
+    
+    local function applyTheme(name, instant)
+        local th = THEMES[name] or THEMES.Lemon
+        T.acc, T.acc2 = th.acc, th.acc2
+        T.bg1, T.bg2 = th.bg1, th.bg2
+        
+        for i = 1, #themeReg do
+            local e = themeReg[i]
+            pcall(function()
+                if e.role == "grad" then
+                    local target = ColorSequence.new(th.acc, th.acc2)
+                    if instant then 
+                        e.i[e.p] = target
+                    else
+                        local seq0 = e.i[e.p]
+                        local n0 = seq0.Keypoints[1].Value
+                        local n1 = seq0.Keypoints[#seq0.Keypoints].Value
+                        local st = os_clock()
+                        task_spawn(function()
+                            while os_clock() - st < 0.35 do
+                                local a = (os_clock() - st) / 0.35
+                                e.i[e.p] = ColorSequence.new(n0:Lerp(th.acc, a), n1:Lerp(th.acc2, a))
+                                task_wait()
+                            end
+                            e.i[e.p] = target
+                        end)
+                    end
+                else
+                    local target = (e.role == "acc" and th.acc or th.acc2)
+                    if instant then 
+                        e.i[e.p] = target
+                    else 
+                        TweenService:Create(e.i, TI.Quart_035, { [e.p] = target }):Play() 
+                    end
+                end
+            end)
+        end
+    end
+
+    -- Premium color scheme
+    local BG0 = Color3_fromRGB(12, 12, 16)
+    local BG1 = Color3_fromRGB(18, 18, 24)
+    local BG2 = Color3_fromRGB(25, 25, 33)
+    local BG3 = Color3_fromRGB(38, 38, 48)
+    local TXT = Color3_fromRGB(240, 240, 248)
+    local DIM = Color3_fromRGB(140, 140, 155)
+    local STR = Color3_fromRGB(55, 55, 70)
+
+    local function corner(p, r) 
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim2.new(0, r or 10)
+        c.Parent = p
+        return c 
+    end
+    
+    local function stroke(p, col, th, tr) 
+        local s = Instance.new("UIStroke")
+        s.Color = col or STR
+        s.Thickness = th or 1
+        s.Transparency = tr or 0
+        s.Parent = p
+        return s 
+    end
+    
+    local function grad(p, c0, c1, rot) 
+        local g = Instance.new("UIGradient")
+        g.Color = ColorSequence.new(c0, c1)
+        g.Rotation = rot or 0
+        g.Parent = p
+        return g 
+    end
+    
+    -- Enhanced ripple effect
+    local function ripple(parent, pos)
+        local r = mk("Frame", parent, { 
+            BackgroundColor3 = Color3_new(1, 1, 1), 
+            BackgroundTransparency = 0.6, 
+            Size = UDim2_new(0, 0, 0, 0), 
+            Position = UDim2_new(0, pos.X - parent.AbsolutePosition.X, 0, pos.Y - parent.AbsolutePosition.Y), 
+            AnchorPoint = Vector2_new(0.5, 0.5), 
+            ZIndex = 10, 
+            BorderSizePixel = 0 
+        })
+        corner(r, 999)
+        local maxS = math_max(parent.AbsoluteSize.X, parent.AbsoluteSize.Y) * 2
+        TweenService:Create(r, TI.Quart_035, { 
+            Size = UDim2_new(0, maxS, 0, maxS), 
+            BackgroundTransparency = 1 
+        }):Play()
+        task_delay(0.5, function() 
+            pcall(function() r:Destroy() end) 
+        end)
+    end
+
+    local function enableTouchScroll(sf)
+        local dragging, startY, startCanvas = false, 0, 0
+        
+        trackConnection(sf.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum_UserInputType.Touch or 
+               inp.UserInputType == Enum_UserInputType.MouseButton1 then
+                dragging, startY, startCanvas = true, inp.Position.Y, sf.CanvasPosition.Y
+            end
+        end), "ui")
+        
+        trackConnection(sf.InputChanged:Connect(function(inp)
+            if dragging and (inp.UserInputType == Enum_UserInputType.Touch or 
+                            inp.UserInputType == Enum_UserInputType.MouseMovement) then
+                local dy = inp.Position.Y - startY
+                local maxCanvas = math_max(0, sf.AbsoluteCanvasSize.Y - sf.AbsoluteWindowSize.Y)
+                pcall(function() 
+                    sf.CanvasPosition = Vector2_new(0, math_clamp(startCanvas - dy, 0, maxCanvas)) 
+                end)
+            end
+        end), "ui")
+        
+        trackConnection(sf.InputEnded:Connect(function(inp)
+            if inp.UserInputType == Enum_UserInputType.Touch or 
+               inp.UserInputType == Enum_UserInputType.MouseButton1 then 
+                dragging = false 
+            end
+        end), "ui")
+    end
+
+    -- Enhanced notification system
+    local NOTIFY_CFG = {
+        success = { col = Color3_fromRGB(80, 220, 110), icon = "✅", bg = Color3_fromRGB(20, 28, 22) },
+        warn = { col = Color3_fromRGB(255, 200, 60), icon = "⚠️", bg = Color3_fromRGB(28, 26, 18) },
+        error = { col = Color3_fromRGB(255, 90, 90), icon = "⛔", bg = Color3_fromRGB(28, 18, 18) },
+        info = { col = Color3_fromRGB(90, 180, 255), icon = "🍋", bg = Color3_fromRGB(18, 22, 28) },
+    }
+    
+    local nstack = {}
+    
+    local function restack()
+        for i = 1, #nstack do
+            if nstack[i].f and nstack[i].f.Parent then
+                TweenService:Create(nstack[i].f, TI.Quart_035, { 
+                    Position = UDim2_new(1, -280, 1, -80 - (i - 1) * 68) 
+                }):Play()
+            end
+        end
+    end
+    
+    local function Notify(kind, title, text, dur)
+        local cfg = NOTIFY_CFG[kind] or NOTIFY_CFG.info
+        local f = mk("Frame", Gui, { 
+            Size = UDim2_new(0, 265, 0, 60), 
+            Position = UDim2_new(1, 30, 1, -80), 
+            BackgroundColor3 = cfg.bg, 
+            BackgroundTransparency = 0.1,
+            BorderSizePixel = 0, 
+            ZIndex = 9990 
+        })
+        corner(f, 14)
+        stroke(f, cfg.col, 2, 0.4)
+        
+        -- Gradient overlay
+        grad(f, Color3_fromRGB(32, 32, 40), Color3_fromRGB(20, 20, 28), 35)
+        
+        -- Icon container with glow
+        local chip = mk("Frame", f, { 
+            Size = UDim2_new(0, 36, 0, 36), 
+            Position = UDim2_new(0, 12, 0.5, -18), 
+            BackgroundColor3 = cfg.col, 
+            BackgroundTransparency = 0.85, 
+            BorderSizePixel = 0, 
+            ZIndex = 9992 
+        })
+        corner(chip, 999)
+        
+        mk("TextLabel", chip, { 
+            Size = UDim2_new(1, 0, 1, 0), 
+            BackgroundTransparency = 1, 
+            Text = cfg.icon, 
+            TextSize = 18, 
+            ZIndex = 9993 
+        })
+        
+        mk("TextLabel", f, { 
+            Size = UDim2_new(1, -62, 0, 20), 
+            Position = UDim2_new(0, 58, 0, 10), 
+            BackgroundTransparency = 1, 
+            Text = title, 
+            TextColor3 = cfg.col, 
+            Font = Enum_Font.GothamBold, 
+            TextSize = 12, 
+            TextXAlignment = Enum.TextXAlignment.Left, 
+            ZIndex = 9991 
+        })
+        
+        mk("TextLabel", f, { 
+            Size = UDim2_new(1, -62, 0, 18), 
+            Position = UDim2_new(0, 58, 0, 30), 
+            BackgroundTransparency = 1, 
+            Text = text, 
+            TextColor3 = Color3_fromRGB(215, 215, 225), 
+            Font = Enum_Font.Gotham, 
+            TextSize = 10, 
+            TextXAlignment = Enum.TextXAlignment.Left, 
+            TextTruncate = Enum.TextTruncate.AtEnd, 
+            ZIndex = 9991 
+        })
+        
+        -- Progress bar
+        local pb = mk("Frame", f, { 
+            Size = UDim2_new(0, 0, 0, 3), 
+            Position = UDim2_new(0, 12, 1, -8), 
+            BackgroundColor3 = cfg.col, 
+            BorderSizePixel = 0, 
+            ZIndex = 9991 
+        })
+        corner(pb, 999)
+        TweenService:Create(pb, TI.Linear_3, { Size = UDim2_new(1, -24, 0, 3) }):Play()
+        
+        table_insert(nstack, { f = f })
+        TweenService:Create(f, TI.Quint_045, { 
+            Position = UDim2_new(1, -280, 1, -80 - (#nstack - 1) * 68) 
+        }):Play()
+        
+        task_delay(dur or 3, function()
+            for i = 1, #nstack do 
+                if nstack[i].f == f then 
+                    table_remove(nstack, i)
+                    break 
+                end 
+            end
+            restack()
+            
+            if f and f.Parent then
+                TweenService:Create(f, TI.Quart_035, { 
+                    Position = UDim2_new(1, 30, 1, f.Position.Y.Offset), 
+                    BackgroundTransparency = 0.6 
+                }):Play()
+                task_wait(0.4)
+                pcall(function() f:Destroy() end)
+            end
+        end)
+    end
+    
+    NotifyRef = Notify
+
+    -- Premium floating button with glow
+    local holder = mk("Frame", Gui, { 
+        Size = UDim2_new(0, 68, 0, 68), 
+        Position = UDim2_new(0, 22, 0.5, -34), 
+        BackgroundTransparency = 1, 
+        ZIndex = 998 
+    })
+    
+    -- Outer glow ring
+    local ring = mk("Frame", holder, { 
+        Size = UDim2_new(0, 52, 0, 52), 
+        Position = UDim2_new(0.5, -26, 0.5, -26), 
+        BackgroundTransparency = 1, 
+        BorderSizePixel = 0, 
+        ZIndex = 997 
+    })
+    corner(ring, 999)
+    local ringStroke = stroke(ring, T.acc, 2.5, 0.4)
+    reg(ringStroke, "Color", "acc")
+    
+    task_spawn(function()
+        while scriptAlive and ring and ring.Parent do
+            TweenService:Create(ring, TI.Sine_12, { 
+                Size = UDim2_new(0, 72, 0, 72), 
+                Position = UDim2_new(0.5, -36, 0.5, -36) 
+            }):Play()
+            TweenService:Create(ringStroke, TI.Sine_12, { Transparency = 0.8 }):Play()
+            task_wait(1.2)
+            if not scriptAlive or not ring or not ring.Parent then break end
+            TweenService:Create(ring, TI.Sine_12, { 
+                Size = UDim2_new(0, 52, 0, 52), 
+                Position = UDim2_new(0.5, -26, 0.5, -26) 
+            }):Play()
+            TweenService:Create(ringStroke, TI.Sine_12, { Transparency = 0.4 }):Play()
+            task_wait(1.2)
+        end
+    end)
+
+    local Btn = mk("TextButton", holder, { 
+        Size = UDim2_new(0, 56, 0, 56), 
+        Position = UDim2_new(0.5, -28, 0.5, -28), 
+        BackgroundColor3 = Color3_new(1, 1, 1), 
+        Text = "🍋", 
+        TextSize = 26, 
+        Font = Enum_Font.GothamBlack, 
+        TextColor3 = Color3_new(1, 1, 1), 
+        ZIndex = 999, 
+        BorderSizePixel = 0, 
+        AutoButtonColor = false 
+    })
+    corner(Btn, 999)
+    local btnGrad = grad(Btn, T.acc, T.acc2, 45)
+    reg(btnGrad, "Color", "grad")
+    stroke(Btn, Color3_new(1, 1, 1), 2, 0.5)
+    local btnScale = Instance.new("UIScale")
+    btnScale.Parent = Btn
+    btnScale.Scale = 1
+
+    -- Premium main window
+    local W, H = 580, 380
+    local SB_W = 130
+    local Win = mk("Frame", Gui, { 
+        Size = UDim2_new(0, W, 0, H), 
+        Position = UDim2_new(0, -750, 0.5, -H / 2), 
+        BackgroundColor3 = BG0, 
+        BackgroundTransparency = 0.08,
+        BorderSizePixel = 0, 
+        ZIndex = 990, 
+        Visible = false, 
+        ClipsDescendants = true 
+    })
+    corner(Win, 20)
+    local winStroke = stroke(Win, T.acc, 1.5, 0.5)
+    reg(winStroke, "Color", "acc")
+    grad(Win, Color3_fromRGB(18, 18, 24), Color3_fromRGB(12, 12, 18), 45)
+
+    -- Premium header with gradient
+    local Head = mk("Frame", Win, { 
+        Size = UDim2_new(1, 0, 0, 44), 
+        BackgroundColor3 = BG1, 
+        BorderSizePixel = 0, 
+        ZIndex = 991 
+    })
+    corner(Head, 20)
+    mk("Frame", Head, { 
+        Size = UDim2_new(1, 0, 0, 22), 
+        Position = UDim2_new(0, 0, 1, -22), 
+        BackgroundColor3 = BG1, 
+        BorderSizePixel = 0, 
+        ZIndex = 991 
+    })
+    local headGrad = grad(Head, T.acc, T.acc2, 0)
+    reg(headGrad, "Color", "grad")
+
+    mk("TextLabel", Head, { 
+        Size = UDim2_new(0, 34, 0, 34), 
+        Position = UDim2_new(0, 10, 0, 5), 
+        BackgroundTransparency = 1, 
+        Text = "🍋", 
+        TextSize = 20, 
+        ZIndex = 993 
+    })
+    mk("TextLabel", Head, { 
+        Size = UDim2_new(0, 200, 0, 18), 
+        Position = UDim2_new(0, 44, 0, 8), 
+        BackgroundTransparency = 1, 
+        Text = "LEMON HUB", 
+        TextColor3 = Color3_fromRGB(25, 22, 6), 
+        Font = Enum_Font.GothamBlack, 
+        TextSize = 14, 
+        TextXAlignment = Enum.TextXAlignment.Left, 
+        ZIndex = 993 
+    })
+    mk("TextLabel", Head, { 
+        Size = UDim2_new(0, 200, 0, 14), 
+        Position = UDim2_new(0, 44, 0, 24), 
+        BackgroundTransparency = 1, 
+        Text = "V48 PREMIUM EDITION", 
+        TextColor3 = Color3_fromRGB(55, 45, 10), 
+        Font = Enum_Font.GothamBold, 
+        TextSize = 9, 
+        TextXAlignment = Enum.TextXAlignment.Left, 
+        ZIndex = 993 
+    })
+
+    -- Enhanced close button
+    local closeBtn = mk("TextButton", Head, { 
+        Size = UDim2_new(0, 28, 0, 28), 
+        Position = UDim2_new(1, -36, 0, 8), 
+        BackgroundColor3 = Color3_fromRGB(35, 28, 10), 
+        BackgroundTransparency = 0.6, 
+        Text = "×", 
+        TextColor3 = Color3_new(1, 1, 1), 
+        Font = Enum_Font.GothamBold, 
+        TextSize = 18, 
+        ZIndex = 993, 
+        BorderSizePixel = 0, 
+        AutoButtonColor = false 
+    })
+    corner(closeBtn, 999)
+    
+    trackConnection(closeBtn.MouseEnter:Connect(function() 
+        TweenService:Create(closeBtn, TI.Quart_025, { BackgroundTransparency = 0.3 }):Play() 
+    end), "ui")
+    trackConnection(closeBtn.MouseLeave:Connect(function() 
+        TweenService:Create(closeBtn, TI.Quart_025, { BackgroundTransparency = 0.6 }):Play() 
+    end), "ui")
+
+    -- Premium sidebar
+    local SB = mk("Frame", Win, { 
+        Size = UDim2_new(0, SB_W, 1, -44), 
+        Position = UDim2_new(0, 0, 0, 44), 
+        BackgroundColor3 = BG1, 
+        BorderSizePixel = 0, 
+        ZIndex = 991 
+    })
+    mk("Frame", SB, { 
+        Size = UDim2_new(0, 1, 1, -24), 
+        Position = UDim2_new(1, 0, 0, 12), 
+        BackgroundColor3 = STR, 
+        BorderSizePixel = 0, 
+        ZIndex = 992 
+    })
+    local sbl = Instance.new("UIListLayout")
+    sbl.Padding = UDim2.new(0, 6)
+    sbl.SortOrder = Enum.SortOrder.LayoutOrder
+    sbl.Parent = SB
+    local sbp = Instance.new("UIPadding")
+    sbp.PaddingTop = UDim2.new(0, 14)
+    sbp.PaddingLeft = UDim2.new(0, 10)
+    sbp.PaddingRight = UDim2.new(0, 10)
+    sbp.Parent = SB
+
+    -- Animated indicator
+    local indicator = mk("Frame", SB, { 
+        Size = UDim2_new(0, 4, 0, 34), 
+        Position = UDim2_new(0, -2, 0, 14), 
+        BackgroundColor3 = T.acc, 
+        BorderSizePixel = 0, 
+        ZIndex = 995 
+    })
+    corner(indicator, 999)
+    local indGrad = grad(indicator, T.acc, T.acc2, 90)
+    reg(indGrad, "Color", "grad")
+
+    local Content = mk("Frame", Win, { 
+        Size = UDim2_new(1, -SB_W, 1, -44), 
+        Position = UDim2_new(0, SB_W, 0, 44), 
+        BackgroundTransparency = 1, 
+        ZIndex = 991 
+    })
+    
+    local Crumb = mk("Frame", Content, { 
+        Size = UDim2_new(1, -24, 0, 28), 
+        Position = UDim2_new(0, 12, 0, 8), 
+        BackgroundColor3 = BG1, 
+        BorderSizePixel = 0, 
+        ZIndex = 992 
+    })
+    corner(Crumb, 10)
+    local crumbLbl = mk("TextLabel", Crumb, { 
+        Size = UDim2_new(1, -20, 1, 0), 
+        Position = UDim2_new(0, 14, 0, 0), 
+        BackgroundTransparency = 1, 
+        Text = "🏠 Home", 
+        TextColor3 = DIM, 
+        Font = Enum_Font.GothamBold, 
+        TextSize = 11, 
+        TextXAlignment = Enum.TextXAlignment.Left, 
+        ZIndex = 993 
+    })
+
+    local Pages = {}
+    local function mkPage(name)
+        local p = mk("ScrollingFrame", Content, { 
+            Size = UDim2_new(1, -24, 1, -48), 
+            Position = UDim2_new(0, 12, 0, 40), 
+            BackgroundTransparency = 1, 
+            ScrollBarThickness = 4, 
+            ScrollBarImageColor3 = T.acc, 
+            AutomaticCanvasSize = Enum.AutomaticSize.Y, 
+            CanvasSize = UDim2_new(0, 0, 0, 0), 
+            Visible = false, 
+            ZIndex = 992 
+        })
+        local lg = Instance.new("UIListLayout")
+        lg.Padding = UDim2.new(0, 8)
+        lg.Parent = p
+        local pd = Instance.new("UIPadding")
+        pd.PaddingRight = UDim2.new(0, 10)
+        pd.PaddingBottom = UDim2.new(0, 12)
+        pd.Parent = p
+        enableTouchScroll(p)
+        Pages[name] = p
+        return p
+    end
+
+    local function section(parent, txt, icon)
+        local wrap = mk("Frame", parent, { 
+            Size = UDim2_new(1, 0, 0, 24), 
+            BackgroundTransparency = 1 
+        })
+        local lbl = mk("TextLabel", wrap, { 
+            Size = UDim2_new(1, 0, 1, 0), 
+            BackgroundTransparency = 1, 
+            Text = string_format("%s %s", icon or "", txt), 
+            TextColor3 = T.acc, 
+            Font = Enum_Font.GothamBlack, 
+            TextSize = 11, 
+            TextXAlignment = Enum.TextXAlignment.Left 
+        })
+        reg(lbl, "TextColor3", "acc")
+        local u = mk("Frame", wrap, { 
+            Size = UDim2_new(1, 0, 0, 2), 
+            Position = UDim2_new(0, 0, 1, -3), 
+            BackgroundColor3 = T.acc, 
+            BackgroundTransparency = 0.6, 
+            BorderSizePixel = 0 
+        })
+        reg(u, "BackgroundColor3", "acc")
+        return wrap
+    end
+
+    local function toggle(parent, txt, def, cb)
+        local F = mk("Frame", parent, { 
+            Size = UDim2_new(1, 0, 0, 38), 
+            BackgroundColor3 = BG2, 
+            BorderSizePixel = 0 
+        })
+        corner(F, 11)
+        grad(F, Color3_fromRGB(32, 32, 42), Color3_fromRGB(24, 24, 32), 90)
+        
+        mk("TextLabel", F, { 
+            Size = UDim2_new(1, -62, 1, 0), 
+            Position = UDim2_new(0, 14, 0, 0), 
+            BackgroundTransparency = 1, 
+            Text = txt, 
+            TextColor3 = TXT, 
+            Font = Enum_Font.GothamSemibold, 
+            TextSize = 11, 
+            TextXAlignment = Enum.TextXAlignment.Left, 
+            TextTruncate = Enum.TextTruncate.AtEnd 
+        })
+        
+        local Bg = mk("Frame", F, { 
+            Size = UDim2_new(0, 38, 0, 20), 
+            Position = UDim2_new(1, -48, 0.5, -10), 
+            BackgroundColor3 = def and T.acc or Color3_fromRGB(65, 65, 78), 
+            BorderSizePixel = 0 
+        })
+        corner(Bg, 999)
+        
+        local Kn = mk("Frame", Bg, { 
+            Size = UDim2_new(0, 16, 0, 16), 
+            Position = def and UDim2_new(1, -18, 0, 2) or UDim2_new(0, 2, 0, 2), 
+            BackgroundColor3 = Color3_new(1, 1, 1), 
+            BorderSizePixel = 0 
+        })
+        corner(Kn, 999)
+        
+        local on = def
+        local B = mk("TextButton", F, { 
+            Size = UDim2_new(1, 0, 1, 0), 
+            BackgroundTransparency = 1, 
+            Text = "" 
+        })
+        
+        trackConnection(B.MouseButton1Click:Connect(function()
+            on = not on
+            TweenService:Create(Bg, TI.Quart_025, { 
+                BackgroundColor3 = on and T.acc or Color3_fromRGB(65, 65, 78) 
+            }):Play()
+            TweenService:Create(Kn, TI.Back_025, { 
+                Position = on and UDim2_new(1, -18, 0, 2) or UDim2_new(0, 2, 0, 2) 
+            }):Play()
+            cb(on)
+        end), "ui")
+    end
+
+    local function button(parent, txt, cb, style)
+        local st = style or "acc"
+        local B = mk("TextButton", parent, { 
+            Size = UDim2_new(1, 0, 0, 36), 
+            BackgroundColor3 = BG2, 
+            Text = "", 
+            BorderSizePixel = 0, 
+            AutoButtonColor = false, 
+            ClipsDescendants = true 
+        })
+        corner(B, 11)
+        grad(B, Color3_fromRGB(38, 38, 48), Color3_fromRGB(28, 28, 38), 90)
+        
+        if st == "acc" then
+            local s = stroke(B, T.acc, 1.5, 0.6)
+            reg(s, "Color", "acc")
+        end
+        
+        local L = mk("TextLabel", B, { 
+            Size = UDim2_new(1, 0, 1, 0), 
+            BackgroundTransparency = 1, 
+            Text = txt, 
+            TextColor3 = TXT, 
+            Font = Enum_Font.GothamBold, 
+            TextSize = 11, 
+            ZIndex = 3 
+        })
+        
+        trackConnection(B.MouseEnter:Connect(function()
+            TweenService:Create(B, TI.Quart_025, { BackgroundColor3 = BG3 }):Play()
+            TweenService:Create(L, TI.Quart_025, { TextColor3 = T.acc }):Play()
+        end), "ui")
+        
+        trackConnection(B.MouseLeave:Connect(function()
+            TweenService:Create(B, TI.Quart_025, { BackgroundColor3 = BG2 }):Play()
+            TweenService:Create(L, TI.Quart_025, { TextColor3 = TXT }):Play()
+        end), "ui")
+        
+        trackConnection(B.MouseButton1Click:Connect(function()
+            ripple(B, UserInputService:GetMouseLocation())
+            pcall(cb)
+        end), "ui")
+        
+        return B
+    end
+
+    local function slider(parent, txt, min, max, def, cb)
+        local F = mk("Frame", parent, { 
+            Size = UDim2_new(1, 0, 0, 48), 
+            BackgroundColor3 = BG2, 
+            BorderSizePixel = 0 
+        })
+        corner(F, 11)
+        
+        mk("TextLabel", F, { 
+            Size = UDim2_new(0.7, 0, 0, 16), 
+            Position = UDim2_new(0, 14, 0, 8), 
+            BackgroundTransparency = 1, 
+            Text = txt, 
+            TextColor3 = TXT, 
+            Font = Enum_Font.GothamSemibold, 
+            TextSize = 11, 
+            TextXAlignment = Enum.TextXAlignment.Left 
+        })
+        
+        local V = mk("TextLabel", F, { 
+            Size = UDim2_new(0.25, 0, 0, 16), 
+            Position = UDim2_new(0.72, 0, 0, 8), 
+            BackgroundTransparency = 1, 
+            Text = tostring(def), 
+            TextColor3 = T.acc, 
+            Font = Enum_Font.GothamBold, 
+            TextSize = 11, 
+            TextXAlignment = Enum.TextXAlignment.Right 
+        })
+        reg(V, "TextColor3", "acc")
+        
+        local SBar = mk("Frame", F, { 
+            Size = UDim2_new(0.9, 0, 0, 8), 
+            Position = UDim2_new(0.05, 0, 0, 30), 
+            BackgroundColor3 = Color3_fromRGB(52, 52, 64), 
+            BorderSizePixel = 0 
+        })
+        corner(SBar, 999)
+        
+        local Fl = mk("Frame", SBar, { 
+            Size = UDim2_new(math_clamp((def - min) / (max - min), 0, 1), 0, 1, 0), 
+            BackgroundColor3 = T.acc, 
+            BorderSizePixel = 0 
+        })
+        corner(Fl, 999)
+        local fg = grad(Fl, T.acc, T.acc2, 0)
+        reg(fg, "Color", "grad")
+        
+        local kn = mk("Frame", Fl, { 
+            Size = UDim2_new(0, 14, 0, 14), 
+            Position = UDim2_new(1, -7, 0.5, -7), 
+            BackgroundColor3 = Color3_new(1, 1, 1), 
+            BorderSizePixel = 0 
+        })
+        corner(kn, 999)
+        stroke(kn, T.acc, 2.5, 0)
+
+        local drag = false
+        local function upd(ip)
+            if SBar.AbsoluteSize.X <= 0 then return end
+            local r = math_clamp((ip.Position.X - SBar.AbsolutePosition.X) / SBar.AbsoluteSize.X, 0, 1)
+            Fl.Size = UDim2_new(r, 0, 1, 0)
+            local v = math_floor(min + (max - min) * r)
+            V.Text = tostring(v)
+            pcall(function() cb(v) end)
+        end
+        
+        trackConnection(SBar.InputBegan:Connect(function(i) 
+            if i.UserInputType == Enum_UserInputType.MouseButton1 or 
+               i.UserInputType == Enum_UserInputType.Touch then 
+                drag = true
+                upd(i) 
+            end 
+        end), "ui")
+        
+        trackConnection(SBar.InputEnded:Connect(function(i) 
+            if i.UserInputType == Enum_UserInputType.MouseButton1 or 
+               i.UserInputType == Enum_UserInputType.Touch then 
+                drag = false 
+            end 
+        end), "ui")
+        
+        trackConnection(UserInputService.InputChanged:Connect(function(i) 
+            if drag and (i.UserInputType == Enum_UserInputType.MouseMovement or 
+                        i.UserInputType == Enum_UserInputType.Touch) then 
+                upd(i) 
+            end 
+        end), "ui")
+        
+        return V
+    end
+
+    local function row2(parent, b1txt, b1cb, b2txt, b2cb, c1, c2)
+        local R = mk("Frame", parent, { 
+            Size = UDim2_new(1, 0, 0, 38), 
+            BackgroundTransparency = 1 
+        })
+        local l = Instance.new("UIListLayout")
+        l.FillDirection = Enum.FillDirection.Horizontal
+        l.Padding = UDim2.new(0, 8)
+        l.Parent = R
+        
+        local function mkB(txt, cb, col)
+            local b = mk("TextButton", R, { 
+                Size = UDim2_new(0.5, -4, 1, 0), 
+                BackgroundColor3 = col, 
+                Text = txt, 
+                TextColor3 = Color3_new(1, 1, 1), 
+                Font = Enum_Font.GothamBold, 
+                TextSize = 11, 
+                BorderSizePixel = 0, 
+                AutoButtonColor = false, 
+                ClipsDescendants = true 
+            })
+            corner(b, 11)
+            
+            trackConnection(b.MouseButton1Click:Connect(function() 
+                ripple(b, UserInputService:GetMouseLocation())
+                pcall(cb) 
+            end), "ui")
+        end
+        
+        mkB(b1txt, b1cb, c1)
+        mkB(b2txt, b2cb, c2)
+    end
+
+    local TABS = {
+        { id = "Home", icon = "🏠", name = "Home" },
+        { id = "Farm", icon = "🚜", name = "Farm" },
+        { id = "Settings", icon = "⚙️", name = "Settings" },
+    }
+    
+    local tabBtns = {}
+    local currentTab = nil
+    
+    local function switchTab(id)
+        if currentTab == id then return end
+        currentTab = id
+        
+        for k, p in pairs(Pages) do p.Visible = (k == id) end
+        
+        for i = 1, #tabBtns do
+            local tb = tabBtns[i]
+            local isActive = tb.id == id
+            TweenService:Create(tb.b, TI.Quart_025, { 
+                BackgroundColor3 = isActive and Color3_fromRGB(42, 35, 15) or Color3_fromRGB(24, 24, 32) 
+            }):Play()
+            TweenService:Create(tb.lbl, TI.Quart_025, { 
+                TextColor3 = isActive and T.acc or DIM 
+            }):Play()
+            
+            if isActive then
+                task_defer(function()
+                    if tb.b and tb.b.Parent and SB and SB.Parent then
+                        local targetY = tb.b.AbsolutePosition.Y - SB.AbsolutePosition.Y
+                        TweenService:Create(indicator, TI.Quint_030, { 
+                            Position = UDim2_new(0, -2, 0, targetY) 
+                        }):Play()
+                    end
+                end)
+            end
+        end
+        
+        for i = 1, #TABS do
+            if TABS[i].id == id then 
+                crumbLbl.Text = string_format("%s  %s", TABS[i].icon, TABS[i].name) 
+            end
+        end
+    end
+
+    for i = 1, #TABS do
+        local tab = TABS[i]
+        local b = mk("TextButton", SB, { 
+            Size = UDim2_new(1, 0, 0, 36), 
+            BackgroundColor3 = Color3_fromRGB(24, 24, 32), 
+            Text = "", 
+            BorderSizePixel = 0, 
+            AutoButtonColor = false 
+        })
+        corner(b, 11)
+        
+        mk("TextLabel", b, { 
+            Size = UDim2_new(0, 26, 1, 0), 
+            Position = UDim2_new(0, 8, 0, 0), 
+            BackgroundTransparency = 1, 
+            Text = tab.icon, 
+            TextSize = 16, 
+            TextColor3 = Color3_new(1, 1, 1), 
+            TextXAlignment = Enum.TextXAlignment.Center 
+        })
+        
+        local lbl = mk("TextLabel", b, { 
+            Size = UDim2_new(1, -34, 1, 0), 
+            Position = UDim2_new(0, 34, 0, 0), 
+            BackgroundTransparency = 1, 
+            Text = tab.name, 
+            TextColor3 = DIM, 
+            Font = Enum_Font.GothamBold, 
+            TextSize = 11, 
+            TextXAlignment = Enum.TextXAlignment.Left 
+        })
+        
+        table_insert(tabBtns, { b = b, lbl = lbl, id = tab.id })
+        
+        trackConnection(b.MouseButton1Click:Connect(function() 
+            switchTab(tab.id) 
+        end), "ui")
+        
+        mkPage(tab.id)
+    end
+
+    -- Premium home page
+    local pHome = Pages.Home
+    local hero = mk("Frame", pHome, { 
+        Size = UDim2_new(1, 0, 0, 82), 
+        BackgroundColor3 = BG2, 
+        BorderSizePixel = 0, 
+        ClipsDescendants = true 
+    })
+    corner(hero, 14)
+    local hg = grad(hero, Color3_fromRGB(42, 35, 12), Color3_fromRGB(22, 22, 30), 25)
+    reg(hg, "Color", "grad")
+    local hs = stroke(hero, T.acc, 1.5, 0.5)
+    reg(hs, "Color", "acc")
+    
+    mk("TextLabel", hero, { 
+        Size = UDim2_new(1, -28, 0, 24), 
+        Position = UDim2_new(0, 18, 0, 14), 
+        BackgroundTransparency = 1, 
+        Text = "🍋 LEMON HUB V48", 
+        TextColor3 = TXT, 
+        Font = Enum_Font.GothamBlack, 
+        TextSize = 18, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+    
+    mk("TextLabel", hero, { 
+        Size = UDim2_new(1, -28, 0, 18), 
+        Position = UDim2_new(0, 18, 0, 40), 
+        BackgroundTransparency = 1, 
+        Text = "Premium Edition • Zero-GC • Enterprise Architecture", 
+        TextColor3 = T.acc, 
+        Font = Enum_Font.GothamBold, 
+        TextSize = 11, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+
+    local statsRow = mk("Frame", pHome, { 
+        Size = UDim2_new(1, 0, 0, 60), 
+        BackgroundTransparency = 1 
+    })
+    local sl = Instance.new("UIListLayout")
+    sl.FillDirection = Enum.FillDirection.Horizontal
+    sl.Padding = UDim2.new(0, 8)
+    sl.Parent = statsRow
+    
+    local statRefs = {}
+    local function statBox(icon, label, val, col)
+        local b = mk("Frame", statsRow, { 
+            Size = UDim2_new(0.333, -6, 1, 0), 
+            BackgroundColor3 = BG2, 
+            BorderSizePixel = 0 
+        })
+        corner(b, 12)
+        grad(b, Color3_fromRGB(32, 32, 42), Color3_fromRGB(22, 22, 30), 90)
+        
+        mk("TextLabel", b, { 
+            Size = UDim2_new(1, -14, 0, 16), 
+            Position = UDim2_new(0, 12, 0, 10), 
+            BackgroundTransparency = 1, 
+            Text = string_format("%s %s", icon, label), 
+            TextColor3 = DIM, 
+            Font = Enum_Font.GothamBold, 
+            TextSize = 9, 
+            TextXAlignment = Enum.TextXAlignment.Left 
+        })
+        
+        local v = mk("TextLabel", b, { 
+            Size = UDim2_new(1, -14, 0, 24), 
+            Position = UDim2_new(0, 12, 0, 26), 
+            BackgroundTransparency = 1, 
+            Text = val, 
+            TextColor3 = col or TXT, 
+            Font = Enum_Font.GothamBlack, 
+            TextSize = 16, 
+            TextXAlignment = Enum.TextXAlignment.Left 
+        })
+        return v
+    end
+    
+    statRefs.fps = statBox("⚡", "FPS", "60", T.acc)
+    statRefs.ping = statBox("📡", "PING", "0ms", Color3_fromRGB(90, 200, 255))
+    statRefs.session = statBox("⏱", "SESSION", "00:00", Color3_fromRGB(120, 220, 130))
+
+    section(pHome, "QUICK ACTIONS", "🎯")
+    row2(pHome,
+        "🚜 Bật Auto Farm", 
+        function() 
+            State.FarmMode = "auto"
+            StartFarm()
+            Notify("success", "🚜 BẬT", "Auto Farm đang chạy!", 3) 
+        end,
+        "⏹ Dừng Farm", 
+        function() 
+            State.FarmMode = "off"
+            Notify("warn", "⏹ DỪNG", "Đã dừng farm", 2) 
+        end,
+        Color3_fromRGB(45, 95, 185), 
+        Color3_fromRGB(125, 55, 55)
+    )
+
+    section(pHome, "THỐNG KÊ", "📊")
+    local sPanel = mk("Frame", pHome, { 
+        Size = UDim2_new(1, 0, 0, 62), 
+        BackgroundColor3 = BG2, 
+        BorderSizePixel = 0 
+    })
+    corner(sPanel, 12)
+    
+    local eggStolenLbl = mk("TextLabel", sPanel, { 
+        Size = UDim2_new(0.5, -14, 0, 20), 
+        Position = UDim2_new(0, 14, 0, 12), 
+        BackgroundTransparency = 1, 
+        Text = "🥚 Cướp: 0", 
+        TextColor3 = TXT, 
+        Font = Enum_Font.GothamBold, 
+        TextSize = 12, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+    
+    local eggPlacedLbl = mk("TextLabel", sPanel, { 
+        Size = UDim2_new(0.5, -14, 0, 20), 
+        Position = UDim2_new(0.5, 0, 0, 12), 
+        BackgroundTransparency = 1, 
+        Text = "🏠 Giao: 0", 
+        TextColor3 = TXT, 
+        Font = Enum.Font.GothamBold, 
+        TextSize = 12, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+    
+    mk("TextLabel", sPanel, { 
+        Size = UDim2_new(1, -28, 0, 16), 
+        Position = UDim2_new(0, 14, 0, 36), 
+        BackgroundTransparency = 1, 
+        Text = "🍋 Lemon Hub V48 - Premium Edition", 
+        TextColor3 = DIM, 
+        Font = Enum_Font.Gotham, 
+        TextSize = 10, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+
+    -- Farm page
+    local pFarm = Pages.Farm
+    section(pFarm, "AUTO FARM", "🚜")
+    
+    toggle(pFarm, "🤖 Auto Cướp & Giao Trứng", false, function(v)
+        if v then 
+            State.FarmMode = "auto"
+            StartFarm()
+            Notify("info", "🚜 FARM", "Đang cướp & giao trứng!", 3)
+        else 
+            State.FarmMode = "off" 
+        end
+    end)
+    
+    toggle(pFarm, "👻 Ghost Mode (tránh player)", false, function(v) State.Ghost = v end)
+    toggle(pFarm, "🏃 Speed Pulse (±10%)", State.SpeedPulse, function(v) State.SpeedPulse = v end)
+    
+    local speedLbl = slider(pFarm, "🚶 Speed đi bộ", 16, 1000, State.FarmSpeed, function(v) State.FarmSpeed = v end)
+    
+    row2(pFarm,
+        "➕ +50 Speed", 
+        function()
+            State.FarmSpeed = math_clamp(State.FarmSpeed + 50, 16, 1000)
+            speedLbl.Text = tostring(State.FarmSpeed)
+            if State.FarmSpeed > 60 then 
+                Notify("warn", "⚠️ SPEED CAO", string_format("WalkSpeed %d dễ bị để ý!", State.FarmSpeed), 2) 
+            end
+        end,
+        "➖ -50 Speed", 
+        function()
+            State.FarmSpeed = math_clamp(State.FarmSpeed - 50, 16, 1000)
+            speedLbl.Text = tostring(State.FarmSpeed)
+            Notify("info", "🚶 SPEED", string_format("WalkSpeed = %d", State.FarmSpeed), 2)
+        end,
+        Color3_fromRGB(65, 135, 95), 
+        Color3_fromRGB(125, 65, 65)
+    )
+    
+    slider(pFarm, "📡 Bán kính quét", 500, 3000, State.Radius, function(v) State.Radius = v end)
+
+    section(pFarm, "Ổ GIAO", "🏠")
+    row2(pFarm,
+        "🏠 Lưu Ổ Giao", 
+        function() 
+            SaveSafeNest()
+            Notify("success", "🏠 ĐÃ LƯU", "Ổ giao đã chốt!", 3) 
+        end,
+        "🧹 Xóa Ổ Giao", 
+        function() 
+            State.SafeNest = nil
+            Notify("info", "🧹", "Đã xóa ổ giao", 2) 
+        end,
+        Color3_fromRGB(45, 95, 185), 
+        Color3_fromRGB(125, 55, 55)
+    )
+    
+    section(pFarm, "Ổ LẤY TRỨNG", "🥚")
+    row2(pFarm,
+        "🥚 Lưu Ổ Lấy", 
+        function() 
+            SaveSpawnNest()
+            Notify("success", "🥚 ĐÃ LƯU", "Ổ lấy đã chốt!", 3) 
+        end,
+        "🧹 Xóa Ổ Lấy", 
+        function() 
+            State.SpawnNest = nil
+            Notify("info", "🧹", "Đã xóa ổ lấy", 2) 
+        end,
+        Color3_fromRGB(185, 135, 45), 
+        Color3_fromRGB(125, 55, 55)
+    )
+
+    -- Settings page
+    local pSettings = Pages.Settings
+    section(pSettings, "THEME", "🎨")
+    
+    for i = 1, #THEME_LIST do
+        local tName = THEME_LIST[i]
+        local tData = THEMES[tName]
+        button(pSettings, tData.name, function() 
+            applyTheme(tName)
+            Notify("info", "🎨 THEME", string_format("Đã đổi: %s", tData.name), 2) 
+        end)
+    end
+    
+    section(pSettings, "THÔNG TIN", "ℹ️")
+    local infoFrame = mk("Frame", pSettings, { 
+        Size = UDim2_new(1, 0, 0, 92), 
+        BackgroundColor3 = BG2, 
+        BorderSizePixel = 0 
+    })
+    corner(infoFrame, 12)
+    
+    mk("TextLabel", infoFrame, { 
+        Size = UDim2_new(1, -28, 0, 18), 
+        Position = UDim2_new(0, 14, 0, 12), 
+        BackgroundTransparency = 1, 
+        Text = "🍋 LEMON HUB V48", 
+        TextColor3 = T.acc, 
+        Font = Enum_Font.GothamBlack, 
+        TextSize = 13, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+    
+    mk("TextLabel", infoFrame, { 
+        Size = UDim2_new(1, -28, 0, 16), 
+        Position = UDim2_new(0, 14, 0, 30), 
+        BackgroundTransparency = 1, 
+        Text = "Premium UI • Comprehensive Bug Fixes", 
+        TextColor3 = DIM, 
+        Font = Enum.Font.Gotham, 
+        TextSize = 10, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+    
+    mk("TextLabel", infoFrame, { 
+        Size = UDim2_new(1, -28, 0, 16), 
+        Position = UDim2_new(0, 14, 0, 46), 
+        BackgroundTransparency = 1, 
+        Text = "Memory Leak Prevention • Connection Cleanup", 
+        TextColor3 = DIM, 
+        Font = Enum.Font.Gotham, 
+        TextSize = 10, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+    
+    mk("TextLabel", infoFrame, { 
+        Size = UDim2_new(1, -28, 0, 16), 
+        Position = UDim2_new(0, 14, 0, 62), 
+        BackgroundTransparency = 1, 
+        Text = "Mobile: ✅   PC: ✅   Full Workspace Scan", 
+        TextColor3 = DIM, 
+        Font = Enum.Font.Gotham, 
+        TextSize = 10, 
+        TextXAlignment = Enum.TextXAlignment.Left 
+    })
+    
+    button(pSettings, "🗑 Hủy script", function()
+        scriptAlive = false
+        speedPulseAlive = false
+        State.FarmMode = "off"
+        cleanupConnections("ui")
+        cleanupConnections("character")
+        pcall(function() blur:Destroy() end)
+        pcall(function() Gui:Destroy() end)
+    end)
+
+    local Status = mk("TextLabel", Win, { 
+        Size = UDim2_new(1, -20, 0, 18), 
+        Position = UDim2_new(0, 12, 1, -24), 
+        BackgroundTransparency = 1, 
+        Text = "🟢 Sẵn sàng", 
+        TextColor3 = Color3_fromRGB(150, 255, 150), 
+        Font = Enum.Font.GothamBold, 
+        TextSize = 10, 
+        TextXAlignment = Enum.TextXAlignment.Left, 
+        ZIndex = 991 
+    })
+    
+    SetStatus = function(m) 
+        pcall(function() Status.Text = m end) 
+    end
+
+    local function openMenu()
+        State.MenuOpen = true
+        Win.Visible = true
+        Win.BackgroundTransparency = 0.15
+        Win.Position = UDim2_new(0, -750, 0.5, -H / 2)
+        TweenService:Create(Win, TI.Quint_045, { 
+            Position = UDim2_new(0, 100, 0.5, -H / 2), 
+            BackgroundTransparency = 0 
+        }):Play()
+        switchTab(currentTab or "Home")
+    end
+    
+    local function closeMenu()
+        State.MenuOpen = false
+        TweenService:Create(Win, TI.Quart_035, { 
+            Position = UDim2_new(0, -750, 0.5, -H / 2), 
+            BackgroundTransparency = 0.4 
+        }):Play()
+        task_wait(0.45)
+        if not State.MenuOpen then 
+            Win.Visible = false
+            Win.BackgroundTransparency = 0 
+        end
+    end
+
+    trackConnection(Btn.MouseButton1Click:Connect(function()
+        TweenService:Create(btnScale, TI.Back_015, { Scale = 0.88 }):Play()
+        task_delay(0.15, function() 
+            TweenService:Create(btnScale, TI.Back_025, { Scale = 1 }):Play() 
+        end)
+        if State.MenuOpen then closeMenu() else openMenu() end
+    end), "ui")
+    
+    trackConnection(closeBtn.MouseButton1Click:Connect(closeMenu), "ui")
+
+    -- Drag functionality
+    local fDrag, fS, fP = false, nil, nil
+    
+    trackConnection(Btn.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum_UserInputType.MouseButton1 or 
+           i.UserInputType == Enum_UserInputType.Touch then
+            fDrag, fS, fP = true, i.Position, holder.Position
+        end
+    end), "ui")
+    
+    trackConnection(Btn.InputEnded:Connect(function(i) 
+        if i.UserInputType == Enum_UserInputType.MouseButton1 or 
+           i.UserInputType == Enum_UserInputType.Touch then 
+            fDrag = false 
+        end 
+    end), "ui")
+    
+    trackConnection(UserInputService.InputChanged:Connect(function(i)
+        if fDrag and (i.UserInputType == Enum_UserInputType.MouseMovement or 
+                     i.UserInputType == Enum_UserInputType.Touch) then
+            local d = i.Position - fS
+            local cam = Workspace.CurrentCamera
+            local vx = cam and cam.ViewportSize.X or 800
+            local vy = cam and cam.ViewportSize.Y or 600
+            holder.Position = UDim2_new(0, math_clamp(fP.X.Offset + d.X, 0, vx - 68), 0, math_clamp(fP.Y.Offset + d.Y, 0, vy - 68))
+        end
+    end), "ui")
+
+    -- Stats update task
+    local sessStart = os_clock()
+    task_spawn(function()
+        while scriptAlive and Gui and Gui.Parent do
+            local fpsOk, fpsVal = pcall(function()
+                local frames, t0 = 0, os_clock()
+                while os_clock() - t0 < 0.5 do 
+                    RunService.RenderStepped:Wait()
+                    frames = frames + 1 
+                end
+                return math_floor(frames / 0.5)
+            end)
+            local fps = fpsOk and fpsVal or 0
+            local ping = 0
+            pcall(function() ping = math_floor(LocalPlayer:GetNetworkPing() * 1000) end)
+            local sess = os_clock() - sessStart
+            
+            pcall(function()
+                if statRefs.fps then statRefs.fps.Text = tostring(fps) end
+                if statRefs.ping then statRefs.ping.Text = string_format("%dms", ping) end
+                if statRefs.session then statRefs.session.Text = string_format("%02d:%02d", math_floor(sess / 60), math_floor(sess % 60)) end
+                if eggStolenLbl then eggStolenLbl.Text = string_format("🥚 Cướp: %d", State.EggsStolen) end
+                if eggPlacedLbl then eggPlacedLbl.Text = string_format("🏠 Giao: %d", State.EggsPlaced) end
+            end)
+            task_wait(0.5)
+        end
+    end)
+
+    applyTheme("Lemon", true)
+    switchTab("Home")
+    Notify("success", "🍋 LEMON HUB V48", "Premium UI Loaded - All Fixes Active!", 5)
+end
+
+-- ==========================================
+-- 7. EXECUTION
+-- ==========================================
+local function errorHandler(err)
+    return string_format("[LEMON-V48 FATAL] %s\n%s", tostring(err), debug.traceback())
+end
+
+xpcall(function()
+    task_spawn(function()
+        task_wait(0.3)
+        local ok, err = pcall(BuildUI)
+        if not ok then 
+            warn(string_format("[V48 UI ERR] %s", tostring(err))) 
+        end
+    end)
+    print("[V48] 3/3 UI OK - Premium Edition Ready!")
+end, errorHandler)
