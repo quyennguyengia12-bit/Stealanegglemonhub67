@@ -1,0 +1,1373 @@
+--[[
+    🍋 LEMON HUB V71 - PREMIUM GLASS UI (Engine = V70 ULTRA)
+    TARGET: Roblox Luau (Delta / Fluxus mobile + PC) | GAME: Steal An Egg | CLIENT-SIDE
+    EN: V70 engine + completely redesigned premium UI (Glassmorphism, gradient text,
+        animated sidebar pill, hover-lift cards, iOS toggles, gradient sliders).
+    VI: Engine V70 + giao diện premium thiết kế lại hoàn toàn (Kính mờ, chữ gradient,
+        thanh trượt sidebar động, card nổi khi hover, toggle kiểu iOS, slider gradient).
+]]
+
+-- ==============================================================================
+-- 1. SERVICES & LOCALIZATION
+-- ==============================================================================
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = Players.LocalPlayer
+
+local task_spawn = task.spawn
+local task_wait = task.wait
+local task_delay = task.delay
+local math_floor = math.floor
+local math_clamp = math.clamp
+local math_max = math.max
+local math_min = math.min
+local math_random = math.random
+local math_huge = math.huge
+local math_abs = math.abs
+local math_sin = math.sin
+local math_pi = math.pi
+local os_clock = os.clock
+local string_find = string.find
+local string_lower = string.lower
+local string_format = string.format
+local string_gsub = string.gsub
+local string_gmatch = string.gmatch
+local string_match = string.match
+local table_insert = table.insert
+local table_remove = table.remove
+local table_concat = table.concat
+local pcall = pcall
+local typeof = typeof
+local ipairs = ipairs
+local pairs = pairs
+local Vector2_new = Vector2.new
+local Vector3_new = Vector3.new
+local CFrame_new = CFrame.new
+local Color3_fromRGB = Color3.fromRGB
+local Color3_new = Color3.new
+local Instance_new = Instance.new
+local EasingStyle = Enum.EasingStyle
+local EasingDirection = Enum.EasingDirection
+
+local UDim2_new = UDim2.new
+local UDim_new = UDim.new
+local function UD(px) return UDim_new(0, px or 0) end
+
+local TELE_SPEED_MIN, TELE_SPEED_MAX = 20, 275
+local WALK_SPEED_MIN, WALK_SPEED_MAX = 16, 400
+local ZONE_NAMES = { "Forest", "Desert", "Snow", "Volcano", "Abyss", "Prehistoric", "Cosmic", "Angels", "Titan", "Lake", "Jungle" }
+local POI_MAP = {
+    ["khe nứt"] = "Rift", ["rift"] = "Rift",
+    ["hợp nhất"] = "Merge", ["merge"] = "Merge",
+    ["bán"] = "Sell", ["sell"] = "Sell",
+    ["phát triển"] = "Incubator", ["incubate"] = "Incubator",
+    ["vùng an toàn"] = "Safe", ["safe zone"] = "Safe",
+}
+local CONFIG_FILE = "LemonHub_Config.txt"
+local VERSION = "V71-GLASS"
+
+-- ==============================================================================
+-- 2. LOG
+-- ==============================================================================
+local LOG_LEVEL = { DEBUG = 1, INFO = 2, WARN = 3, ERROR = 4 }
+local CurrentLogLevel = LOG_LEVEL.INFO
+local function Log(lvl, msg)
+    if lvl >= CurrentLogLevel then print(string_format("[V71|%d] %s", lvl, msg)) end
+end
+
+-- ==============================================================================
+-- 3. ENUM GUARD & TWEEN POOL
+-- ==============================================================================
+local ES_VALID = {}
+for _, item in ipairs(EasingStyle:GetEnumItems()) do ES_VALID[item.Name] = item end
+local function ES(name) return ES_VALID[name] or EasingStyle.Quart end
+local TI = {
+    Q25 = TweenInfo.new(0.25, ES("Quart")),
+    Q35 = TweenInfo.new(0.35, ES("Quart")),
+    Q45 = TweenInfo.new(0.45, ES("Quint")),
+    B25 = TweenInfo.new(0.25, ES("Back")),
+    B15 = TweenInfo.new(0.15, ES("Back")),
+    S12 = TweenInfo.new(1.2, ES("Sine"), EasingDirection.InOut),
+}
+
+-- ==============================================================================
+-- 4. ITERATIVE SCANNER
+-- ==============================================================================
+local function forEachDescendantIterative(root, callback, maxDepth)
+    maxDepth = maxDepth or 12
+    local queue = {{root, 0}}
+    local head = 1
+    local count = 0
+    while head <= #queue do
+        local item = queue[head]
+        head = head + 1
+        count = count + 1
+        if count % 1500 == 0 then task_wait() end
+        local node, d = item[1], item[2]
+        pcall(callback, node)
+        if d < maxDepth then
+            local ch = node:GetChildren()
+            for i = 1, #ch do queue[#queue + 1] = {ch[i], d + 1} end
+        end
+        if head > 4000 then
+            local s = head - 1
+            local L = #queue
+            local nq = {}
+            for i = s + 1, L do nq[i - s] = queue[i]; queue[i] = nil end
+            queue = nq
+            head = 1
+        end
+    end
+end
+
+-- ==============================================================================
+-- 5. UTILS
+-- ==============================================================================
+local function mk(cls, parent, props)
+    local i = Instance_new(cls)
+    for k, v in pairs(props) do pcall(function() i[k] = v end) end
+    if parent then pcall(function() i.Parent = parent end) end
+    return i
+end
+local function setListPad(l, px) pcall(function() l.Padding = UD(px) end) end
+local function setUIPad(p, t, l, r, b)
+    pcall(function() p.PaddingTop = UD(t); p.PaddingLeft = UD(l); p.PaddingRight = UD(r); p.PaddingBottom = UD(b) end)
+end
+local function corner(p, r)
+    local c = Instance_new("UICorner")
+    pcall(function() c.CornerRadius = UD(r or 8) end)
+    pcall(function() c.Parent = p end)
+    return c
+end
+local function SafeParent(gui)
+    for a = 1, 3 do
+        local okH, h = pcall(function() return gethui and gethui() end)
+        if okH and h and typeof(h) == "Instance" then
+            pcall(function() gui.Parent = h end)
+            if gui.Parent == h then return "gethui" end
+        end
+        pcall(function() gui.Parent = CoreGui end)
+        if gui.Parent then return "coregui" end
+        pcall(function() gui.Parent = LocalPlayer:WaitForChild("PlayerGui", 3) end)
+        if gui.Parent then return "playergui" end
+        task_wait(0.3)
+    end
+    return "failed"
+end
+local function showFatal(msg)
+    pcall(function()
+        local g = Instance_new("ScreenGui"); g.Name = "LemonFatal"; g.ResetOnSpawn = false; SafeParent(g)
+        local f = mk("Frame", g, { Size = UDim2_new(0, 300, 0, 130), Position = UDim2_new(0.5, -150, 0, 60), BackgroundColor3 = Color3_fromRGB(40, 15, 15), BorderSizePixel = 0, ZIndex = 100 })
+        corner(f, 10)
+        mk("TextLabel", f, { Size = UDim2_new(1, -16, 1, -16), Position = UDim2_new(0, 8, 0, 8), BackgroundTransparency = 1, TextWrapped = true, Text = "⛔ LEMON HUB LỖI:\n" .. tostring(msg):sub(1, 200), TextColor3 = Color3_fromRGB(255, 120, 120), Font = Enum.Font.Gotham, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 101 })
+    end)
+end
+
+-- ==============================================================================
+-- 6. REMOTE GUARD + CONFLICT
+-- ==============================================================================
+local REMOTE_MIN_GAP = 0.3
+local lastRemoteFire = 0
+local function ThrottleRemote()
+    local n = os_clock(); local g = REMOTE_MIN_GAP - (n - lastRemoteFire)
+    if g > 0 then task_wait(g) end
+    lastRemoteFire = os_clock()
+end
+local CONFLICT_NAMES = { "topbarplus", "hdadmin", "hd admin", "infiniteyield", "iy_", "iy " }
+local function DetectConflictingScripts()
+    local found, seen = {}, {}
+    pcall(function()
+        local cs = { CoreGui, LocalPlayer:FindFirstChildOfClass("PlayerGui") }
+        for _, c in ipairs(cs) do
+            if c then
+                forEachDescendantIterative(c, function(g)
+                    if seen[g] then return end
+                    seen[g] = true
+                    local n = string_lower(g.Name)
+                    for _, k in ipairs(CONFLICT_NAMES) do
+                        if string_find(n, k, 1, true) then table_insert(found, g.Name); break end
+                    end
+                end, 5)
+            end
+        end
+    end)
+    return found
+end
+
+-- ==============================================================================
+-- 7. KEY GATE
+-- ==============================================================================
+local KEY_CORRECT = "Lemonr56oy"
+local KEY_FILE = "LemonHub_SavedKey.txt"
+local scriptAlive = true
+local unlocked = false
+local HAS_FILE_API = false
+pcall(function() HAS_FILE_API = (type(readfile) == "function") and (type(isfile) == "function") and (type(writefile) == "function") end)
+pcall(function()
+    local t = { CoreGui, LocalPlayer:FindFirstChild("PlayerGui") }
+    local okH, h = pcall(function() return gethui and gethui() end)
+    if okH and h then table_insert(t, h) end
+    for _, c in ipairs(t) do
+        if c then
+            for _, g in ipairs(c:GetChildren()) do
+                if g:IsA("ScreenGui") and (string_find(g.Name, "Lemon") or string_find(g.Name, "Hub")) then pcall(function() g:Destroy() end) end
+            end
+        end
+    end
+end)
+local savedKey = nil
+pcall(function() if HAS_FILE_API and isfile(KEY_FILE) then savedKey = readfile(KEY_FILE) end end)
+local KeyGui = mk("ScreenGui", nil, { Name = "LemonKeyGate", ResetOnSpawn = false, IgnoreGuiInset = true })
+SafeParent(KeyGui)
+local kCard = mk("Frame", KeyGui, { Size = UDim2_new(0, 280, 0, 176), Position = UDim2_new(0.5, -140, 0.5, -88), BackgroundColor3 = Color3_fromRGB(22, 22, 26), BorderSizePixel = 0, ZIndex = 10 })
+corner(kCard, 10)
+mk("UIStroke", kCard, { Color = Color3_fromRGB(255, 190, 60), Thickness = 1.5, Transparency = 0.3 })
+mk("TextLabel", kCard, { Size = UDim2_new(1, -24, 0, 24), Position = UDim2_new(0, 12, 0, 10), BackgroundTransparency = 1, Text = "🍋 LEMON HUB " .. VERSION, TextColor3 = Color3_fromRGB(255, 215, 80), Font = Enum.Font.GothamBlack, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 11 })
+mk("TextLabel", kCard, { Size = UDim2_new(1, -24, 0, 14), Position = UDim2_new(0, 12, 0, 36), BackgroundTransparency = 1, Text = "KEY GATE RIÊNG • nhập đúng key để mở MAIN", TextColor3 = Color3_fromRGB(190, 190, 200), Font = Enum.Font.GothamMedium, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 11 })
+local kBoxFrame = mk("Frame", kCard, { Size = UDim2_new(1, -32, 0, 34), Position = UDim2_new(0, 16, 0, 56), BackgroundColor3 = Color3_fromRGB(36, 36, 40), BorderSizePixel = 0, ZIndex = 11 })
+corner(kBoxFrame, 8)
+local kBox = mk("TextBox", kBoxFrame, { Size = UDim2_new(1, -16, 1, 0), Position = UDim2_new(0, 8, 0, 0), BackgroundTransparency = 1, Text = "", PlaceholderText = "Dán key vào đây...", TextColor3 = Color3_new(1, 1, 1), Font = Enum.Font.GothamSemibold, TextSize = 12, PlaceholderColor3 = Color3_fromRGB(120, 120, 130), ZIndex = 12 })
+if savedKey == KEY_CORRECT then kBox.Text = KEY_CORRECT end
+local kBtn = mk("TextButton", kCard, { Size = UDim2_new(1, -32, 0, 36), Position = UDim2_new(0, 16, 0, 98), BackgroundColor3 = Color3_fromRGB(255, 205, 60), Text = "🔓 MỞ KHÓA VÀO MAIN", TextColor3 = Color3_fromRGB(25, 20, 5), Font = Enum.Font.GothamBlack, TextSize = 12, ZIndex = 11, AutoButtonColor = false })
+corner(kBtn, 8)
+local kMsg = mk("TextLabel", kCard, { Size = UDim2_new(1, -24, 0, 14), Position = UDim2_new(0, 12, 0, 140), BackgroundTransparency = 1, Text = (savedKey == KEY_CORRECT) and "✅ Key đã lưu - bấm nút để vào" or "", TextColor3 = Color3_fromRGB(140, 230, 150), Font = Enum.Font.GothamMedium, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 11 })
+local function TryUnlock()
+    local input = string_gsub(string_gsub(kBox.Text, "^%s+", ""), "%s+$", "")
+    if input == KEY_CORRECT then
+        unlocked = true
+        pcall(function() if HAS_FILE_API then writefile(KEY_FILE, input) end end)
+        kBtn.Text = "✅ THÀNH CÔNG!"
+        task_wait(0.35)
+        pcall(function() KeyGui:Destroy() end)
+    else
+        kMsg.Text = "❌ SAI KEY - thử lại!"
+        kMsg.TextColor3 = Color3_fromRGB(255, 120, 120)
+        local o = kCard.Position
+        for _, dx in ipairs({ -8, 8, -6, 6, -3, 3, 0 }) do
+            kCard.Position = UDim2_new(o.X.Scale, o.X.Offset + dx, o.Y.Scale, o.Y.Offset)
+            task_wait(0.04)
+        end
+        kCard.Position = o
+    end
+end
+kBtn.MouseButton1Click:Connect(TryUnlock)
+kBox.FocusLost:Connect(function(ep) if ep then TryUnlock() end end)
+task_spawn(function()
+    task_wait(8)
+    if not unlocked and KeyGui and not KeyGui.Parent then
+        local p = mk("Frame", nil, {})
+        local r = SafeParent(p)
+        pcall(function() p:Destroy() end)
+        if r == "failed" then unlocked = true; Log(LOG_LEVEL.WARN, "SafeParent failed -> bypass.") else Log(LOG_LEVEL.WARN, "KeyGui destroyed -> NO bypass.") end
+    end
+end)
+local guard = 0
+while not unlocked and scriptAlive and guard < 4000 do task_wait(0.2); guard = guard + 1 end
+pcall(function() if KeyGui and KeyGui.Parent then KeyGui:Destroy() end end)
+Log(LOG_LEVEL.INFO, "Key gate done, unlocked=" .. tostring(unlocked))
+
+-- ==============================================================================
+-- 8. STATE & CORE
+-- ==============================================================================
+local State = {
+    FarmMode = "off", FarmRunning = false, Ghost = false,
+    FarmSpeed = 16, Radius = 2500, SpeedPulse = false,
+    StealMode = "walk", TeleSpeed = 50, UseInstantZone = false, InstantZone = nil,
+    SafeNest = nil, SpawnNest = nil, SafeZone = nil, HomePos = nil,
+    EggsStolen = 0, EggsPlaced = 0, DeliverFails = 0,
+    MenuOpen = false, AntiAFK = false, KickShield = false, StealState = "idle",
+    ShowNotify = true, ShowStatus = true, BlurOn = false, ShowFloat = true,
+    SpeedCycle = false, CycleHigh = 25, CycleSafe = 8, AutoRejoin = true,
+    EspEggs = false, EspPlayers = false, AutoFlee = false, FleeBoost = 1.5,
+    IsCarryingNow = false,
+    ZoneCache = {}, PoiCache = {},
+    SessionStart = os_clock(),
+    Cache = { Steal = {}, Place = {} },
+}
+local NotifyRef = function() end
+local SetStatus = function() end
+local UIRefs = {}
+local AssumeCarryUntil, LastGood, LastGoodTime = 0, nil, 0
+local LastScan, LastRemind, LastRewind = 0, 0, 0
+local SkipMap = {}
+local CarrySrc = ""
+local fpsSmooth = 60
+
+local Char, HRP, Hum
+local function UpdateCharacter()
+    Char = LocalPlayer.Character
+    if Char then
+        HRP = Char:FindFirstChild("HumanoidRootPart")
+        Hum = Char:FindFirstChild("Humanoid")
+    end
+end
+UpdateCharacter()
+
+pcall(function()
+    RunService.RenderStepped:Connect(function(dt)
+        local inst = 1 / math_max(dt or 0.016, 0.0001)
+        fpsSmooth = fpsSmooth * 0.9 + inst * 0.1
+    end)
+end)
+
+pcall(function()
+    LocalPlayer.Kicked:Connect(function(reason)
+        Log(LOG_LEVEL.WARN, "KICKED reason=" .. tostring(reason))
+        if State.AutoRejoin then
+            task_wait(1)
+            pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+        end
+    end)
+end)
+
+task_spawn(function()
+    task_wait(3)
+    if HRP and not State.HomePos then State.HomePos = HRP.Position; Log(LOG_LEVEL.INFO, "HomePos captured.") end
+end)
+
+local function GetVirtualUser()
+    local v = nil
+    pcall(function() v = game:GetService("VirtualUser") end)
+    if v and typeof(v) == "Instance" then return v end
+    v = nil
+    pcall(function() v = game:FindService("VirtualUser") end)
+    if v and typeof(v) == "Instance" then return v end
+    return nil
+end
+local afkConn = nil
+local function SetAntiAFK(on)
+    if on and not afkConn then
+        local vu = GetVirtualUser()
+        if not vu then NotifyRef("warn", "😴 ANTI-AFK", "Executor không hỗ trợ!", 4); return end
+        afkConn = LocalPlayer.Idled:Connect(function() pcall(function() vu:CaptureController(); vu:ClickButton2(Vector2_new(0, 0)) end) end)
+    elseif not on and afkConn then
+        pcall(function() afkConn:Disconnect() end); afkConn = nil
+    end
+end
+
+local teleTarget, teleActive = nil, false
+local teleConn = nil
+local function ApplyKickShield()
+    State.KickShield = true; State.StealMode = "walk"; State.SpeedPulse = false; State.UseInstantZone = false
+    State.FarmSpeed = math_min(State.FarmSpeed, 60); teleActive = false; teleTarget = nil
+    pcall(function() if Hum then Hum.WalkSpeed = State.FarmSpeed end end)
+    NotifyRef("success", "🛡 KICK SHIELD", "Đã về chế độ an toàn!", 4)
+end
+
+local speedConns = {}
+local SAFE_CYCLE_SPEED = 60
+local function ApplySpeedNow()
+    local hum = Hum
+    if not hum or not hum.Parent then return end
+    local t = State.FarmSpeed
+    if State.KickShield then
+        t = math_min(t, 60)
+    else
+        if State.SpeedCycle then
+            local per = State.CycleHigh + State.CycleSafe
+            if per > 0 then local pos = os_clock() % per; if pos >= State.CycleHigh then t = SAFE_CYCLE_SPEED end end
+        end
+        if State.AutoFlee and State.IsCarryingNow then t = t * State.FleeBoost end
+        if State.SpeedPulse then local ph = (os_clock() * 3) % 1; t = t * (1 + 0.1 * math_sin(ph * 2 * math_pi)) end
+    end
+    t = math_floor(t + 0.5)
+    if math_abs(hum.WalkSpeed - t) > 0.5 then pcall(function() hum.WalkSpeed = t end) end
+end
+local function StartSpeedEnforcer()
+    if #speedConns > 0 then return end
+    speedConns[1] = RunService.Stepped:Connect(function() ApplySpeedNow() end)
+    speedConns[2] = RunService.Heartbeat:Connect(function() ApplySpeedNow() end)
+end
+StartSpeedEnforcer()
+
+local function NoteGoodPos()
+    if HRP and HRP.Position.Y > -20 and HRP.Position.Y < 400 then LastGood = HRP.Position; LastGoodTime = os_clock() end
+end
+local function RewindIfFell()
+    if HRP and HRP.Position.Y < -60 then
+        if os_clock() - LastRewind > 4 then
+            LastRewind = os_clock()
+            local tg = (LastGood and (os_clock() - LastGoodTime) < 15) and LastGood or nil
+            pcall(function() HRP.CFrame = CFrame_new((tg or Vector3_new(0, 60, 0)) + Vector3_new(0, 3, 0)) end)
+        end
+        return true
+    end
+    return false
+end
+local function WalkTo(pos, timeout)
+    if not Hum or not HRP or not pos then return false end
+    pcall(function() Hum:MoveTo(pos) end)
+    local st = os_clock(); local li = st; local lp = HRP.Position; local sa = st; local j = 0
+    timeout = timeout or 30
+    while os_clock() - st < timeout do
+        if State.FarmMode == "off" then return false end
+        if not HRP or not Hum or Hum.Health <= 0 then return false end
+        NoteGoodPos(); if RewindIfFell() then return false end
+        if (HRP.Position - pos).Magnitude < 6 then return true end
+        if (HRP.Position - lp).Magnitude < 0.5 then
+            if os_clock() - sa > 2 then j = j + 1; pcall(function() Hum.Jump = true end); pcall(function() Hum:MoveTo(pos) end); sa = os_clock(); if j > 3 then return false end end
+        else lp = HRP.Position; sa = os_clock() end
+        if os_clock() - li > 2 then pcall(function() Hum:MoveTo(pos) end); li = os_clock() end
+        task_wait(0.25)
+    end
+    return HRP and (HRP.Position - pos).Magnitude < 8
+end
+
+local function StartTeleLoop()
+    if teleConn then return end
+    teleConn = RunService.Heartbeat:Connect(function(dt)
+        if not teleActive or not teleTarget then return end
+        if State.KickShield then teleActive = false; return end
+        local root = HRP
+        if not root or not root.Parent then teleActive = false; return end
+        local cur = root.Position
+        local dist = (teleTarget - cur).Magnitude
+        if dist < 2 then teleActive = false; return end
+        local step = math_min(dist, State.TeleSpeed * (dt or 0.016))
+        local dir = (teleTarget - cur).Unit
+        local arcY = teleTarget.Y + 3 + math_min(40, dist * 0.10)
+        local blend = math_clamp(dist / 60, 0, 1)
+        local desiredY = (teleTarget.Y + 2) * (1 - blend) + arcY * blend
+        local np = cur + dir * step
+        np = Vector3_new(np.X, desiredY, np.Z)
+        pcall(function() root.CFrame = CFrame_new(np) end)
+    end)
+end
+local function TeleTo(pos, timeout, force)
+    if State.KickShield then return false end
+    if not HRP or not pos then return false end
+    if not timeout then local d = (HRP.Position - pos).Magnitude; timeout = (d / math_max(State.TeleSpeed, 1)) + 6 end
+    StartTeleLoop(); teleTarget = pos; teleActive = true
+    local st = os_clock()
+    while teleActive and (os_clock() - st) < timeout do
+        if not HRP or not HRP.Parent then teleActive = false; return false end
+        if not force and State.FarmMode == "off" then teleActive = false; return false end
+        if (HRP.Position - pos).Magnitude < 3 then teleActive = false; return true end
+        task_wait(0.1)
+    end
+    teleActive = false
+    return HRP ~= nil and (HRP.Position - pos).Magnitude < 6
+end
+local function SmartMove(pos, timeout)
+    if not State.KickShield and (State.StealMode == "tele" or State.StealMode == "instant") then
+        if TeleTo(pos, timeout, false) then return true end
+    end
+    return WalkTo(pos, timeout or 25)
+end
+
+-- ==============================================================================
+-- 9. SCAN (expanded keywords for new update)
+-- ==============================================================================
+local STEAL_KW = { "steal", "grab", "pick", "cướp", "cắp", "trộm", "nhặt", "lấy", "snatch", "trứng", "egg", "rift", "khe" }
+local PLACE_KW = { "place", "submit", "deliver", "đặt", "nộp", "ổ", "nest", "turn", "incubate", "merge", "hợp nhất" }
+local EXPLICIT_PLACE = { "đặt trứng", "place egg", "giao trứng", "deliver egg", "nộp trứng", "submit egg", "drop egg", "thả trứng" }
+local function hasKW(s, l)
+    if not s then return false end
+    s = string_lower(s)
+    for i = 1, #l do if string_find(s, l[i], 1, true) then return true end end
+    return false
+end
+local function PromptPos(p)
+    local par = p.Parent
+    if not par then return nil end
+    if par:IsA("BasePart") then return par.Position end
+    if par:IsA("Model") and par.PrimaryPart then return par.PrimaryPart.Position end
+    local q = {{par, 0}}; local h = 1
+    while h <= #q and h <= 100 do
+        local it = q[h]; h = h + 1
+        local cur, d = it[1], it[2]
+        if cur:IsA("BasePart") then return cur.Position end
+        if d < 3 then local ch = cur:GetChildren(); for i = 1, #ch do q[#q + 1] = {ch[i], d + 1} end end
+    end
+    return nil
+end
+local function ScanInto(root)
+    pcall(function()
+        forEachDescendantIterative(root, function(o)
+            if o:IsA("ProximityPrompt") and o.Enabled then
+                local text = string_format("%s %s %s", o.ActionText or "", o.ObjectText or "", o.Name)
+                local pos = PromptPos(o)
+                if pos then
+                    local lt = string_lower(text)
+                    local isP = false
+                    for i = 1, #EXPLICIT_PLACE do if string_find(lt, EXPLICIT_PLACE[i], 1, true) then isP = true; break end end
+                    if not isP and hasKW(text, PLACE_KW) and not hasKW(text, STEAL_KW) then isP = true end
+                    if isP then table_insert(State.Cache.Place, { p = o, pos = pos })
+                    elseif hasKW(text, STEAL_KW) then table_insert(State.Cache.Steal, { p = o, pos = pos }) end
+                end
+            end
+        end, 8)
+    end)
+end
+local function UpdateCache() State.Cache.Steal, State.Cache.Place = {}, {}; ScanInto(Workspace) end
+local function PruneSkip()
+    local n = os_clock()
+    for k, v in pairs(SkipMap) do local a = true; pcall(function() a = (k.Parent ~= nil) end); if v < n or not a then SkipMap[k] = nil end end
+end
+local function GetAdaptiveScanInterval()
+    local t = #State.Cache.Steal + #State.Cache.Place
+    if t >= 10 then return 8 elseif t < 3 then return 2 else return 5 end
+end
+local function MaybeScan(f)
+    if f or os_clock() - LastScan > GetAdaptiveScanInterval() then LastScan = os_clock(); PruneSkip(); UpdateCache() end
+end
+local function FindInstantZone()
+    local found = nil
+    pcall(function()
+        forEachDescendantIterative(Workspace, function(o)
+            if found then return end
+            local n = string_lower(o.Name)
+            if string_find(n, "instantsteal", 1, true) or string_find(n, "instant_steal", 1, true) or string_find(n, "instant steal", 1, true) then
+                if o:IsA("BasePart") then found = o.Position elseif o:IsA("Model") and o.PrimaryPart then found = o.PrimaryPart.Position end
+            end
+            if not found and o:IsA("TextLabel") then
+                local t = string_lower(tostring(o.Text))
+                if string_find(t, "instant steal", 1, true) then
+                    local p = o.Parent
+                    while p and not p:IsA("BasePart") do p = p.Parent end
+                    if p then found = p.Position end
+                end
+            end
+        end, 6)
+    end)
+    return found
+end
+task_spawn(function()
+    for _, w in ipairs({ 3, 8, 15 }) do
+        task_wait(w)
+        if not scriptAlive or State.InstantZone then break end
+        local z = FindInstantZone()
+        if z then State.InstantZone = z; NotifyRef("info", "📍 INSTANT ZONE", "Đã tìm vùng Instant!", 4); break end
+    end
+end)
+
+-- ==============================================================================
+-- 9b. ZONE + POI SCAN & TELEPORT (new-update objects)
+-- ==============================================================================
+local function ScanZones()
+    State.ZoneCache = {}
+    State.PoiCache = {}
+    pcall(function()
+        forEachDescendantIterative(Workspace, function(o)
+            local txt = nil
+            if o:IsA("TextLabel") then txt = o.Text
+            elseif o:IsA("BillboardGui") then local tl = o:FindFirstChildOfClass("TextLabel"); if tl then txt = tl.Text end end
+            if txt then
+                local lt = string_lower(txt)
+                local pos = nil
+                if o:IsA("BillboardGui") and o.Adornee and o.Adornee:IsA("BasePart") then pos = o.Adornee.Position
+                else
+                    local p = o
+                    for i = 1, 4 do p = p.Parent; if not p then break end; if p:IsA("BasePart") then pos = p.Position; break end end
+                end
+                if pos then
+                    for _, zn in ipairs(ZONE_NAMES) do
+                        if string_find(lt, string_lower(zn), 1, true) and not State.ZoneCache[zn] then State.ZoneCache[zn] = pos end
+                    end
+                    for pat, canon in pairs(POI_MAP) do
+                        if string_find(lt, pat, 1, true) and not State.PoiCache[canon] then State.PoiCache[canon] = pos end
+                    end
+                end
+            end
+        end, 6)
+    end)
+end
+local function CountZones() local n = 0; for _ in pairs(State.ZoneCache) do n = n + 1 end; return n end
+local function TeleportToZone(zn)
+    if CountZones() == 0 then ScanZones() end
+    local pos = State.ZoneCache[zn]
+    if not pos then NotifyRef("warn", "🗺 KHÔNG THẤY", "Chưa quét thấy " .. zn, 2); return end
+    local ok = TeleTo(pos, nil, true)
+    NotifyRef(ok and "success" or "warn", ok and ("🗺 ĐẾN " .. zn) or "🗺 TELE HỤT", ok and ("Đã tới " .. zn) or ("Không tới " .. zn), 2)
+end
+local function TeleportToPoi(canon)
+    if not next(State.PoiCache) then ScanZones() end
+    local pos = State.PoiCache[canon]
+    if not pos then NotifyRef("warn", "📍 KHÔNG THẤY", "Chưa quét thấy " .. canon, 2); return end
+    local ok = TeleTo(pos, nil, true)
+    NotifyRef(ok and "success" or "warn", ok and ("📍 ĐẾN " .. canon) or "📍 TELE HỤT", ok and ("Đã tới " .. canon) or ("Không tới " .. canon), 2)
+end
+
+-- ==============================================================================
+-- 9c. ESP
+-- ==============================================================================
+local espEgg, espPlayer = {}, {}
+local function ClearEggEsp() for p, h in pairs(espEgg) do pcall(function() h:Destroy() end) end; espEgg = {} end
+local function ClearPlayerEsp() for p, h in pairs(espPlayer) do pcall(function() h:Destroy() end) end; espPlayer = {} end
+local function UpdateEggEsp()
+    if not State.EspEggs then ClearEggEsp(); return end
+    for p, h in pairs(espEgg) do if not p.Parent or not h.Parent then pcall(function() h:Destroy() end); espEgg[p] = nil end end
+    local c = State.Cache.Steal
+    for i = 1, #c do
+        local d = c[i]
+        if d.p and d.p.Parent and not espEgg[d.p] then
+            local h = Instance_new("Highlight")
+            h.Adornee = d.p.Parent; h.FillColor3 = Color3_fromRGB(255, 200, 50); h.FillTransparency = 0.6; h.OutlineColor3 = Color3_fromRGB(255, 200, 50)
+            pcall(function() h.Parent = Workspace end); espEgg[d.p] = h
+        end
+    end
+end
+local function UpdatePlayerEsp()
+    if not State.EspPlayers then ClearPlayerEsp(); return end
+    for pl, h in pairs(espPlayer) do if not pl.Parent or not pl.Character or h.Adornee ~= pl.Character then pcall(function() h:Destroy() end); espPlayer[pl] = nil end end
+    local ps = Players:GetPlayers()
+    for i = 1, #ps do
+        local pl = ps[i]
+        if pl ~= LocalPlayer and pl.Character and not espPlayer[pl] then
+            local h = Instance_new("Highlight")
+            h.Adornee = pl.Character; h.FillColor3 = Color3_fromRGB(255, 80, 80); h.FillTransparency = 0.6; h.OutlineColor3 = Color3_fromRGB(255, 80, 80)
+            pcall(function() h.Parent = Workspace end); espPlayer[pl] = h
+        end
+    end
+end
+task_spawn(function() while scriptAlive do task_wait(1); pcall(UpdateEggEsp); pcall(UpdatePlayerEsp) end end)
+
+-- ==============================================================================
+-- 10. CARRY & STEAL
+-- ==============================================================================
+local CARRY_BL = { "giao dịch", "trade", "cửa hàng", "shop", "mục lục", "nhiệm vụ", "quest", "trứng trộm cắp", "steal egg", "esp trứng", "lưu ổ", "xóa ổ", "thống kê", "hủy script", "place egg" }
+local function IsCarrying()
+    if os_clock() < AssumeCarryUntil then CarrySrc = "giả lập"; return true end
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        local found = false
+        forEachDescendantIterative(pg, function(g)
+            if found then return end
+            if (g:IsA("TextButton") or g:IsA("TextLabel")) and g.Visible then
+                local t = string_lower(tostring(g.Text))
+                if string_find(t, "place egg", 1, true) then return end
+                if string_find(t, "thả", 1, true) and not string_find(t, "thả tim", 1, true) and g.AbsoluteSize.Y > 20 and g.AbsoluteSize.Y < 200 then CarrySrc = "nút"; found = true; return end
+                if string_find(t, "chạy!!", 1, true) then CarrySrc = "banner"; found = true; return end
+                if g.AbsoluteSize.Y > 5 and g.AbsoluteSize.Y < 150 then
+                    local bl = false
+                    for i = 1, #CARRY_BL do if string_find(t, CARRY_BL[i], 1, true) then bl = true; break end end
+                    if not bl then
+                        local kw = { "thả trứng", "drop egg", "đặt trứng", "deliver egg", "giao trứng", "carry", "hold", "cầm", "giữ", "vác", "mang" }
+                        for i = 1, #kw do if string_find(t, kw[i], 1, true) then CarrySrc = "label"; found = true; return end end
+                    end
+                end
+            end
+        end, 6)
+        if found then return true end
+    end
+    if Char then
+        local ch = Char:GetChildren()
+        for i = 1, #ch do
+            local c = ch[i]; local n = string_lower(c.Name)
+            if (string_find(n, "egg", 1, true) or string_find(n, "trứng", 1, true)) and not string_find(n, "bat", 1, true) and not string_find(n, "gậy", 1, true) and (c:IsA("BasePart") or c:IsA("Model") or c:IsA("MeshPart")) then CarrySrc = "model"; return true end
+        end
+    end
+    CarrySrc = ""; return false
+end
+local function SetStealState(s) State.StealState = s; Log(LOG_LEVEL.DEBUG, "StealState=" .. s) end
+local function TrySteal(prompt, pos)
+    if not prompt or not HRP then return false end
+    local maxD = (prompt.MaxActivationDistance or 10)
+    for a = 1, 3 do
+        if not prompt.Parent or not prompt.Enabled then SetStealState("success"); return true end
+        if IsCarrying() then SetStealState("success"); return true end
+        SetStealState("approach")
+        if (HRP.Position - pos).Magnitude > maxD then
+            if not State.KickShield and (State.StealMode == "tele" or State.StealMode == "instant") then TeleTo(pos, 6, true) else WalkTo(pos, 6) end
+            task_wait(0.2)
+        end
+        ThrottleRemote()
+        local fired = false
+        if State.StealMode == "instant" and not State.KickShield then fired = pcall(function() if fireproximityprompt then fireproximityprompt(prompt) else error("no") end end) end
+        SetStealState("hold")
+        local okB = pcall(function() prompt:InputHoldBegin() end)
+        if okB then
+            local raw = prompt.HoldDuration or 0
+            local hold = fired and 0.05 or math_clamp(raw, 0.1, 3)
+            local t0 = os_clock(); local res = nil
+            while os_clock() - t0 < hold do
+                task_wait(0.08)
+                if not prompt.Parent or not prompt.Enabled then res = "taken"; break end
+                if not HRP then res = "dead"; break end
+                if IsCarrying() then res = "carry"; break end
+            end
+            pcall(function() prompt:InputHoldEnd() end)
+            if res == "taken" or res == "carry" then SetStealState("success"); return true end
+            if res == "dead" then SetStealState("failed"); return false end
+            task_wait(0.15)
+            if IsCarrying() then SetStealState("success"); return true end
+            if not prompt.Parent or not prompt.Enabled then SetStealState("success"); return true end
+            SetStealState("verify"); ThrottleRemote()
+            pcall(function() prompt:InputHoldBegin() end); task_wait(0.12); pcall(function() prompt:InputHoldEnd() end); task_wait(0.15)
+            if IsCarrying() then SetStealState("success"); return true end
+            if not prompt.Parent or not prompt.Enabled then SetStealState("success"); return true end
+        end
+        task_wait(0.25)
+    end
+    SetStealState("failed"); return IsCarrying()
+end
+local function PlayerNearby(d)
+    local ps = Players:GetPlayers()
+    for i = 1, #ps do local pl = ps[i]; if pl ~= LocalPlayer and pl.Character then local h = pl.Character:FindFirstChild("HumanoidRootPart"); if h and HRP and (h.Position - HRP.Position).Magnitude < d then return true end end end
+    return false
+end
+local function HumanPause() if math_random(1, 100) <= 10 then task_wait(math_random(30, 50) / 10) else task_wait(math_random(8, 22) / 10) end end
+local function SaveSafeNest()
+    if not HRP then return false end
+    local pos, gp = HRP.Position, HRP.Position
+    pcall(function() local rp = Workspace:Raycast(pos + Vector3_new(0, 2, 0), Vector3_new(0, -12, 0)); if rp then gp = rp.Position end end)
+    State.SafeNest = Vector3_new(gp.X, gp.Y + 3, gp.Z); State.DeliverFails = 0; return true
+end
+local function SaveSpawnNest() if not HRP then return false end; State.SpawnNest = HRP.Position; return true end
+local function FirePlacePrompt(radius)
+    if not HRP then return false end
+    local c = State.Cache.Place
+    for i = 1, #c do
+        local d = c[i]
+        if d.p and d.p.Parent and d.pos and (HRP.Position - d.pos).Magnitude <= (radius or 14) then
+            ThrottleRemote()
+            local okB = pcall(function() d.p:InputHoldBegin() end)
+            if okB then
+                local hold = math_clamp(d.p.HoldDuration or 0, 0.1, 3)
+                task_wait(hold); pcall(function() d.p:InputHoldEnd() end); task_wait(0.25)
+                if not IsCarrying() then State.SafeNest = d.pos; State.DeliverFails = 0; NotifyRef("success", "🏠 TỰ HỌC Ổ", "Đã chốt ổ!", 4); return true end
+            end
+        end
+    end
+    return false
+end
+
+-- ==============================================================================
+-- 11. ACTIONS + FARM + KEYBINDS
+-- ==============================================================================
+local function NearestStealPrompt()
+    MaybeScan(false)
+    local b, bd = nil, math_huge
+    local c = State.Cache.Steal
+    for i = 1, #c do local d = c[i]; if d.p and d.p.Parent and d.pos then local dist = (HRP and (HRP.Position - d.pos).Magnitude) or math_huge; if dist < bd then bd, b = dist, d end end end
+    return b
+end
+local function ActionTeleSteal()
+    if State.KickShield then NotifyRef("warn", "🛡 SHIELD", "Tắt shield!", 3); return end
+    if not HRP then NotifyRef("error", "⛔ LỖI", "Chưa có nhân vật!", 2); return end
+    local d = NearestStealPrompt()
+    if not d then NotifyRef("warn", "📭 KHÔNG THẤY", "Quét lại!", 2); return end
+    local ok = TeleTo(d.pos, nil, true)
+    if not ok then NotifyRef("warn", "🌀 TELE HỤT", "Không tới trứng!", 2); return end
+    task_wait(0.15)
+    if TrySteal(d.p, d.pos) then AssumeCarryUntil = os_clock() + 45; State.EggsStolen = State.EggsStolen + 1; NotifyRef("success", "🌀 TELE+CƯỚP OK", "Tức thì!", 2) else NotifyRef("warn", "🌀 HỤT", "Server chặn!", 2) end
+end
+local function ActionTeleToNest()
+    if State.KickShield then NotifyRef("warn", "🛡 SHIELD", "Tắt shield!", 3); return end
+    if not HRP then NotifyRef("error", "⛔ LỖI", "Chưa có nhân vật!", 2); return end
+    local t = State.SafeNest or State.SafeZone or State.HomePos
+    if not t then NotifyRef("warn", "🏠 CHƯA CÓ Ổ", "Lưu ổ hoặc đợi auto!", 2); return end
+    local ok = TeleTo(t, nil, true)
+    NotifyRef(ok and "success" or "warn", ok and "🏠 TELE OK" or "🏠 TELE HỤT", ok and "Đã về ổ!" or "Không về được!", 2)
+end
+local function ActionInstantSteal()
+    if State.KickShield then NotifyRef("warn", "🛡 SHIELD", "Tắt shield!", 3); return end
+    if not HRP then NotifyRef("error", "⛔ LỖI", "Chưa có nhân vật!", 2); return end
+    local d = NearestStealPrompt()
+    if not d then NotifyRef("warn", "📭 KHÔNG THẤY", "Quét lại!", 2); return end
+    TeleTo(d.pos, nil, true); task_wait(0.2); ThrottleRemote()
+    local fired = pcall(function() if fireproximityprompt then fireproximityprompt(d.p) else error("no") end end)
+    if not fired then pcall(function() d.p:InputHoldBegin() end); task_wait(math_clamp(d.p.HoldDuration or 0, 0.1, 3)); pcall(function() d.p:InputHoldEnd() end) end
+    task_wait(0.3)
+    if IsCarrying() then AssumeCarryUntil = os_clock() + 45; State.EggsStolen = State.EggsStolen + 1; NotifyRef("success", "⚡ INSTANT OK", "Tức thì!", 2) else NotifyRef("warn", "⚡ HỤT", "Server chặn!", 2) end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task_wait(1); UpdateCharacter(); SkipMap = {}; AssumeCarryUntil = 0; teleActive = false
+    State.Cache.Steal, State.Cache.Place = {}, {}
+    pcall(function() ApplySpeedNow() end)
+end)
+task_spawn(function()
+    for _, w in ipairs({ 2, 5, 10 }) do
+        task_wait(w)
+        if not scriptAlive or State.SafeZone then break end
+        pcall(function()
+            local f = nil
+            forEachDescendantIterative(Workspace, function(o) if f then return end; if o:IsA("BasePart") then local n = string_lower(o.Name); if string_find(n, "safezone") or string_find(n, "antoan") or string_find(n, "an_toan") or string_find(n, "safearea") then f = o.Position end end end, 6)
+            if not f then local sp = Workspace:FindFirstChildWhichIsA("SpawnLocation", true); if sp then f = sp.Position end end
+            if f then State.SafeZone = f; if not State.SafeNest then State.SafeNest = f; NotifyRef("success", "🏠 AUTO NEST", "Tự chốt ổ!", 5) end end
+        end)
+    end
+end)
+task_spawn(function()
+    local lp, wc, cs = nil, false, 0
+    while scriptAlive do
+        task_wait(0.5)
+        local c = IsCarrying(); State.IsCarryingNow = c
+        if c then if not wc then cs = os_clock() end; if HRP then lp = HRP.Position end; wc = true
+        elseif wc then wc = false; if lp and (os_clock() - cs) > 2 then State.SafeNest = lp; State.DeliverFails = 0 end; lp = nil end
+    end
+end)
+
+local BACKOFF = { 0.5, 1, 1.5, 2.5, 4 }
+local function RobustReturnToNest(tp, ma)
+    ma = ma or 5
+    for a = 1, ma do
+        if State.FarmMode == "off" then return false end
+        if not IsCarrying() then return true end
+        if not HRP or not Hum or Hum.Health <= 0 then return false end
+        if (HRP.Position - tp).Magnitude < 12 then return true end
+        local d = (HRP.Position - tp).Magnitude
+        local dt = math_max(30, d / math_max(16, State.FarmSpeed) * 2.5)
+        local ok = SmartMove(tp, dt)
+        if ok and HRP and (HRP.Position - tp).Magnitude < 12 then return true end
+        SetStatus(string_format("🔄 #%d/%d", a, ma)); task_wait(BACKOFF[a] or 4); MaybeScan(true)
+    end
+    return false
+end
+local function StartFarm()
+    if State.FarmRunning then return end
+    State.FarmRunning = true
+    task_spawn(function()
+        MaybeScan(true)
+        while State.FarmMode ~= "off" do
+            local ok, err = pcall(function()
+                UpdateCharacter()
+                if not HRP or not Hum or Hum.Health <= 0 then task_wait(1); return end
+                MaybeScan(false)
+                if IsCarrying() then
+                    local dp, src = State.SafeNest, "nest"
+                    if not dp then
+                        MaybeScan(true)
+                        local bp, bd = nil, math_huge
+                        local c = State.Cache.Place
+                        for i = 1, #c do local d = c[i]; if d.p and d.p.Parent and d.pos then local dist = (HRP.Position - d.pos).Magnitude; if dist < bd then bd, bp = dist, d end end end
+                        if bp then dp, src = bp.pos, "prompt" end
+                    end
+                    if not dp and State.SafeZone then dp, src = State.SafeZone, "safezone" end
+                    if not dp and State.HomePos then dp, src = State.HomePos, "home" end
+                    if not dp then
+                        if os_clock() - LastRemind > 15 then LastRemind = os_clock(); NotifyRef("warn", "CHƯA CÓ Ổ!", "Đứng an toàn → 🏠 Lưu", 5) end
+                        SetStatus("⛔ Cần ổ!"); task_wait(2); return
+                    end
+                    if State.Ghost and PlayerNearby(10) then task_wait(2); return end
+                    SetStatus("🏠 Về ổ (" .. src .. ")")
+                    if RobustReturnToNest(dp, 5) then
+                        local t0 = os_clock()
+                        while os_clock() - t0 < 3 and IsCarrying() do task_wait(0.4) end
+                        MaybeScan(false); if IsCarrying() then FirePlacePrompt(14) end
+                        if IsCarrying() then
+                            local offs = { Vector3_new(6, 0, 0), Vector3_new(-6, 0, 0), Vector3_new(0, 0, 6), Vector3_new(0, 0, -6) }
+                            for i = 1, #offs do if not IsCarrying() then break end; SmartMove(dp + offs[i], 4); task_wait(0.6) end
+                            if IsCarrying() then FirePlacePrompt(20) end
+                            local t1 = os_clock()
+                            while os_clock() - t1 < 4 and IsCarrying() do task_wait(0.4) end
+                        end
+                        if not IsCarrying() then
+                            AssumeCarryUntil = 0; State.EggsPlaced = State.EggsPlaced + 1; State.DeliverFails = 0
+                            SetStatus("✅ Giao #" .. State.EggsPlaced); NotifyRef("success", "🏠 GIAO OK!", "Tổng " .. State.EggsPlaced, 3)
+                        else
+                            State.DeliverFails = State.DeliverFails + 1; SetStatus("⚠️ x" .. State.DeliverFails)
+                            if State.DeliverFails >= 3 then if src == "nest" then State.SafeNest = nil end; State.DeliverFails = 0 end
+                        end
+                        HumanPause()
+                    end
+                else
+                    if State.Ghost and PlayerNearby(10) then task_wait(2); return end
+                    if State.StealMode == "instant" and State.UseInstantZone and State.InstantZone and not State.KickShield then
+                        if (HRP.Position - State.InstantZone).Magnitude > 8 then SmartMove(State.InstantZone, 10); task_wait(0.3) end
+                    end
+                    local now = os_clock(); local b, bd = nil, math_huge
+                    local c = State.Cache.Steal
+                    for i = 1, #c do local d = c[i]; if d.p and d.p.Parent and d.pos and d.pos.Y > -20 and not (SkipMap[d.p] and now < SkipMap[d.p]) then local dist = (HRP.Position - d.pos).Magnitude; if dist < State.Radius and dist < bd then bd, b = dist, d end end end
+                    if b then
+                        SetStatus(string_format("🚶 %dm", math_floor(bd)))
+                        if SmartMove(b.pos, 25) then
+                            task_wait(math_random(3, 8) / 10)
+                            if TrySteal(b.p, b.pos) then AssumeCarryUntil = os_clock() + 45; State.EggsStolen = State.EggsStolen + 1; SetStatus("✅ #" .. State.EggsStolen); NotifyRef("success", "🥚 CƯỚP OK!", "Tổng " .. State.EggsStolen, 3) else SkipMap[b.p] = os_clock() + 10; SetStatus("⚠️ hụt") end
+                            HumanPause()
+                        else SkipMap[b.p] = os_clock() + 25; SetStatus("⚠️ kẹt") end
+                    else SetStatus("⏳ quét"); MaybeScan(true); task_wait(2.5) end
+                end
+            end)
+            if not ok then Log(LOG_LEVEL.ERROR, "FARM ERR " .. tostring(err)) end
+            task_wait(0.2)
+        end
+        State.FarmRunning = false; teleActive = false; SetStatus("🟢 Sẵn sàng")
+    end)
+end
+
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if UserInputService:GetFocusedTextBox() then return end
+    if inp.KeyCode == Enum.KeyCode.RightShift then
+        if UIRefs.toggleMenu then UIRefs.toggleMenu() end
+    elseif inp.KeyCode == Enum.KeyCode.P then
+        if State.FarmMode == "off" then State.FarmMode = "auto"; StartFarm(); NotifyRef("info", "🚜 FARM", "Bật qua phím P", 2)
+        else State.FarmMode = "off"; NotifyRef("warn", "🚜 FARM", "Tắt qua phím P", 2) end
+    end
+end)
+
+-- ==============================================================================
+-- 12. CONFIG SAVE/LOAD + getgenv
+-- ==============================================================================
+local function SaveConfig()
+    if not HAS_FILE_API then NotifyRef("warn", "💾 CONFIG", "Executor không hỗ trợ file!", 3); return end
+    local L = {}
+    L[#L + 1] = "FarmSpeed=" .. State.FarmSpeed
+    L[#L + 1] = "Radius=" .. State.Radius
+    L[#L + 1] = "TeleSpeed=" .. State.TeleSpeed
+    L[#L + 1] = "CycleHigh=" .. State.CycleHigh
+    L[#L + 1] = "CycleSafe=" .. State.CycleSafe
+    L[#L + 1] = "SpeedPulse=" .. tostring(State.SpeedPulse)
+    L[#L + 1] = "SpeedCycle=" .. tostring(State.SpeedCycle)
+    L[#L + 1] = "Ghost=" .. tostring(State.Ghost)
+    L[#L + 1] = "AutoFlee=" .. tostring(State.AutoFlee)
+    L[#L + 1] = "EspEggs=" .. tostring(State.EspEggs)
+    L[#L + 1] = "EspPlayers=" .. tostring(State.EspPlayers)
+    L[#L + 1] = "ShowNotify=" .. tostring(State.ShowNotify)
+    L[#L + 1] = "ShowStatus=" .. tostring(State.ShowStatus)
+    L[#L + 1] = "BlurOn=" .. tostring(State.BlurOn)
+    L[#L + 1] = "UseInstantZone=" .. tostring(State.UseInstantZone)
+    L[#L + 1] = "StealMode=" .. State.StealMode
+    pcall(function() writefile(CONFIG_FILE, table_concat(L, "\n")) end)
+    NotifyRef("success", "💾 ĐÃ LƯU", "Config đã ghi!", 3)
+end
+local function LoadConfig()
+    if not HAS_FILE_API then NotifyRef("warn", "📂 CONFIG", "Executor không hỗ trợ file!", 3); return end
+    local ok, data = pcall(function() return isfile(CONFIG_FILE) and readfile(CONFIG_FILE) or nil end)
+    if not ok or not data then NotifyRef("warn", "📂 CONFIG", "Chưa có config!", 3); return end
+    for line in string_gmatch(data, "[^\n]+") do
+        local k, v = string_match(line, "^([^=]+)=(.*)$")
+        if k and v then
+            k = string_gsub(k, "%s+$", ""); v = string_gsub(v, "%s+$", "")
+            if k == "FarmSpeed" then State.FarmSpeed = math_clamp(tonumber(v) or 16, WALK_SPEED_MIN, WALK_SPEED_MAX)
+            elseif k == "Radius" then State.Radius = math_clamp(tonumber(v) or 2500, 500, 3000)
+            elseif k == "TeleSpeed" then State.TeleSpeed = math_clamp(tonumber(v) or 50, TELE_SPEED_MIN, TELE_SPEED_MAX)
+            elseif k == "CycleHigh" then State.CycleHigh = math_clamp(tonumber(v) or 25, 5, 60)
+            elseif k == "CycleSafe" then State.CycleSafe = math_clamp(tonumber(v) or 8, 3, 30)
+            elseif k == "SpeedPulse" then State.SpeedPulse = (v == "true")
+            elseif k == "SpeedCycle" then State.SpeedCycle = (v == "true")
+            elseif k == "Ghost" then State.Ghost = (v == "true")
+            elseif k == "AutoFlee" then State.AutoFlee = (v == "true")
+            elseif k == "EspEggs" then State.EspEggs = (v == "true")
+            elseif k == "EspPlayers" then State.EspPlayers = (v == "true")
+            elseif k == "ShowNotify" then State.ShowNotify = (v == "true")
+            elseif k == "ShowStatus" then State.ShowStatus = (v == "true")
+            elseif k == "BlurOn" then State.BlurOn = (v == "true")
+            elseif k == "UseInstantZone" then State.UseInstantZone = (v == "true")
+            elseif k == "StealMode" then State.StealMode = v
+            end
+        end
+    end
+    ApplySpeedNow()
+    NotifyRef("success", "📂 ĐÃ TẢI", "Config đã áp dụng!", 3)
+end
+
+pcall(function()
+    if getgenv then
+        getgenv().LemonHubV71 = {
+            version = VERSION, state = State,
+            startFarm = StartFarm, stopFarm = function() State.FarmMode = "off" end,
+            teleportHome = ActionTeleToNest, teleportZone = TeleportToZone, teleportPoi = TeleportToPoi,
+            setSpeed = function(v) State.FarmSpeed = math_clamp(tonumber(v) or 16, WALK_SPEED_MIN, WALK_SPEED_MAX); ApplySpeedNow() end,
+            setTeleSpeed = function(v) State.TeleSpeed = math_clamp(tonumber(v) or 50, TELE_SPEED_MIN, TELE_SPEED_MAX) end,
+            saveConfig = SaveConfig, loadConfig = LoadConfig,
+            setLogLevel = function(l) CurrentLogLevel = math_clamp(tonumber(l) or 2, 1, 4) end,
+        }
+    end
+end)
+Log(LOG_LEVEL.INFO, "Core OK")
+
+-- ==============================================================================
+-- 13. PREMIUM GLASS UI (COMPLETE REDESIGN)
+-- ==============================================================================
+local function BuildUI()
+    local Gui = mk("ScreenGui", nil, { Name = "LemonHubV71", ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+    SafeParent(Gui)
+    local blurFx = nil
+    pcall(function() blurFx = Instance_new("BlurEffect"); blurFx.Size = 0; blurFx.Parent = Lighting end)
+    
+    -- Premium Color Palette
+    local ACC1 = Color3_fromRGB(255, 215, 0) -- Gold/Lemon
+    local ACC2 = Color3_fromRGB(255, 140, 0) -- Deep Orange
+    local BG1 = Color3_fromRGB(15, 15, 18)   -- Deep Obsidian
+    local BG2 = Color3_fromRGB(22, 22, 26)   -- Lighter Obsidian
+    local CARD = Color3_fromRGB(28, 28, 34)  -- Card Glass
+    local TXT = Color3_fromRGB(255, 255, 255)
+    local SUB = Color3_fromRGB(160, 160, 175)
+    local TRK = Color3_fromRGB(45, 45, 52)
+    
+    local function grad(p, c1, c2, rot)
+        local g = Instance_new("UIGradient")
+        g.Color = ColorSequence.new(c1, c2)
+        g.Rotation = rot or 90
+        pcall(function() g.Parent = p end)
+        return g
+    end
+    local function stroke(p, col, thick, trans)
+        local s = Instance_new("UIStroke")
+        s.Color = col or Color3_new(1,1,1)
+        s.Thickness = thick or 1
+        s.Transparency = trans or 0.8
+        pcall(function() s.Parent = p end)
+        return s
+    end
+    local function lighten(c, a) return Color3_new(math_min(1, c.R + a), math_min(1, c.G + a), math_min(1, c.B + a)) end
+    
+    local function enableTouchScroll(sf)
+        local dr, sy, sc = false, 0, 0
+        sf.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then dr, sy, sc = true, i.Position.Y, sf.CanvasPosition.Y end end)
+        sf.InputChanged:Connect(function(i) if dr and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then local dy = i.Position.Y - sy; local mc = math_max(0, sf.AbsoluteCanvasSize.Y - sf.AbsoluteWindowSize.Y); pcall(function() sf.CanvasPosition = Vector2_new(0, math_clamp(sc - dy, 0, mc)) end) end end)
+        sf.InputEnded:Connect(function() dr = false end)
+    end
+
+    -- Premium Notifications
+    local NOTIFY_CFG = { success = { col = Color3_fromRGB(80, 220, 110), icon = "✅" }, warn = { col = Color3_fromRGB(255, 200, 60), icon = "⚠️" }, error = { col = Color3_fromRGB(255, 90, 90), icon = "⛔" }, info = { col = ACC1, icon = "🍋" } }
+    local NW, NH, NG = 280, 60, 68
+    local nstack = {}
+    local function restack() for i = 1, #nstack do local f = nstack[i]; if f and f.Parent then TweenService:Create(f, TI.Q35, { Position = UDim2_new(1, -NW - 15, 1, -80 - (i - 1) * NG) }):Play() end end end
+    local function Notify(kind, title, text, dur)
+        if not State.ShowNotify then return end
+        dur = dur or 3
+        pcall(function()
+            if #nstack >= 4 then local o = table_remove(nstack, 1); pcall(function() o:Destroy() end); restack() end
+            local cfg = NOTIFY_CFG[kind] or NOTIFY_CFG.info
+            local f = mk("Frame", Gui, { Size = UDim2_new(0, NW, 0, NH), Position = UDim2_new(1, 10, 1, -80 - #nstack * NG), BackgroundColor3 = BG1, BackgroundTransparency = 0.15, BorderSizePixel = 0, ZIndex = 9990 })
+            corner(f, 12)
+            stroke(f, cfg.col, 1.5, 0.4)
+            grad(f, BG1, BG2, 135)
+            
+            local ch = mk("Frame", f, { Size = UDim2_new(0, 32, 0, 32), Position = UDim2_new(0, 12, 0.5, -16), BackgroundColor3 = cfg.col, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 9992 })
+            corner(ch, 999)
+            mk("TextLabel", ch, { Size = UDim2_new(1, 0, 1, 0), BackgroundTransparency = 1, Text = cfg.icon, TextSize = 16, TextColor3 = Color3_new(1, 1, 1), ZIndex = 9993 })
+            
+            local ttl = mk("TextLabel", f, { Size = UDim2_new(1, -56, 0, 18), Position = UDim2_new(0, 52, 0, 10), BackgroundTransparency = 1, Text = title, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 9991 })
+            grad(ttl, cfg.col, lighten(cfg.col, 0.2), 0)
+            
+            mk("TextLabel", f, { Size = UDim2_new(1, -56, 0, 16), Position = UDim2_new(0, 52, 0, 28), BackgroundTransparency = 1, Text = text, TextColor3 = SUB, Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 9991 })
+            
+            local bar = mk("Frame", f, { Size = UDim2_new(0, 0, 0, 3), Position = UDim2_new(0, 12, 1, -6), BackgroundColor3 = cfg.col, BorderSizePixel = 0, ZIndex = 9991 })
+            corner(bar, 2)
+            grad(bar, cfg.col, lighten(cfg.col, 0.3), 0)
+            TweenService:Create(bar, TweenInfo.new(dur, ES("Linear")), { Size = UDim2_new(1, -24, 0, 3) }):Play()
+            
+            table_insert(nstack, f)
+            TweenService:Create(f, TI.Q45, { Position = UDim2_new(1, -NW - 15, 1, -80 - (#nstack - 1) * NG) }):Play()
+            task_delay(dur, function()
+                for i = 1, #nstack do if nstack[i] == f then table_remove(nstack, i); break end end
+                restack()
+                if f.Parent then TweenService:Create(f, TI.Q25, { Position = UDim2_new(1, 10, 1, f.Position.Y.Offset), BackgroundTransparency = 1 }):Play(); task_wait(0.3); pcall(function() f:Destroy() end) end
+            end)
+        end)
+    end
+    NotifyRef = Notify
+
+    -- Floating Button
+    local FloatBtn = mk("TextButton", Gui, { Size = UDim2_new(0, 50, 0, 50), Position = UDim2_new(0.5, -25, 0, 15), BackgroundColor3 = BG1, BackgroundTransparency = 0.1, Text = "🍋", TextSize = 24, Font = Enum.Font.GothamBlack, TextColor3 = TXT, ZIndex = 998, BorderSizePixel = 0, AutoButtonColor = false })
+    corner(FloatBtn, 999)
+    stroke(FloatBtn, ACC1, 2, 0.4)
+    grad(FloatBtn, BG1, BG2, 135)
+
+    -- Main Window
+    local vpX, vpY = 800, 500
+    pcall(function() local vp = Workspace.CurrentCamera.ViewportSize; vpX, vpY = vp.X, vp.Y end)
+    local WIN_W = math_clamp(math_floor(vpX * 0.85), 480, 600)
+    local WIN_H = math_clamp(math_floor(vpY * 0.65), 320, 420)
+    
+    local Window = mk("Frame", Gui, { Size = UDim2_new(0, WIN_W, 0, WIN_H), Position = UDim2_new(0.5, -WIN_W/2, 0.5, -WIN_H/2), BackgroundColor3 = BG1, BackgroundTransparency = 0.08, BorderSizePixel = 0, Visible = false, ClipsDescendants = true, ZIndex = 10 })
+    corner(Window, 16)
+    stroke(Window, ACC1, 1.5, 0.85)
+    grad(Window, BG1, BG2, 135)
+
+    -- Title Bar
+    local TitleBar = mk("Frame", Window, { Size = UDim2_new(1, 0, 0, 40), BackgroundTransparency = 1, ZIndex = 11 })
+    local TitleTxt = mk("TextLabel", TitleBar, { Size = UDim2_new(1, -120, 1, 0), Position = UDim2_new(0, 16, 0, 0), BackgroundTransparency = 1, Text = "🍋 LEMON HUB " .. VERSION, Font = Enum.Font.GothamBlack, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 12 })
+    grad(TitleTxt, ACC1, ACC2, 0)
+
+    local minimized, maximized = false, false
+    local prevSize, prevPos = Window.Size, Window.Position
+    local function makeWinCtrl(col, off)
+        local b = mk("TextButton", TitleBar, { Size = UDim2_new(0, 14, 0, 14), Position = UDim2_new(1, -off, 0.5, -7), BackgroundColor3 = col, BorderSizePixel = 0, ZIndex = 13, AutoButtonColor = false })
+        corner(b, 999)
+        stroke(b, lighten(col, 0.2), 1, 0.5)
+        b.MouseEnter:Connect(function() TweenService:Create(b, TI.Q25, { Size = UDim2_new(0, 16, 0, 16), Position = UDim2_new(1, -off-1, 0.5, -8) }):Play() end)
+        b.MouseLeave:Connect(function() TweenService:Create(b, TI.Q25, { Size = UDim2_new(0, 14, 0, 14), Position = UDim2_new(1, -off, 0.5, -7) }):Play() end)
+        return b
+    end
+    local CloseBtn = makeWinCtrl(Color3_fromRGB(255, 95, 86), 20)
+    local MaxBtn = makeWinCtrl(Color3_fromRGB(255, 189, 46), 42)
+    local MinBtn = makeWinCtrl(Color3_fromRGB(40, 200, 60), 64)
+
+    local function applyBlur() if blurFx then pcall(function() blurFx.Size = (State.BlurOn and Window.Visible) and 18 or 0 end) end end
+    local function openWindow() 
+        Window.Visible = true; State.MenuOpen = true; applyBlur()
+        Window.Size = UDim2_new(0, WIN_W * 0.9, 0, WIN_H * 0.9)
+        TweenService:Create(Window, TI.B25, { Size = UDim2_new(0, WIN_W, 0, WIN_H) }):Play()
+    end
+    local function closeWindow() 
+        TweenService:Create(Window, TI.Q25, { Size = UDim2_new(0, WIN_W * 0.9, 0, WIN_H * 0.9) }):Play()
+        task_wait(0.25)
+        Window.Visible = false; State.MenuOpen = false; applyBlur() 
+    end
+    UIRefs.toggleMenu = function() if Window.Visible then closeWindow() else openWindow() end end
+
+    MinBtn.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        if minimized then Sidebar.Visible = false; Content.Visible = false; TweenService:Create(Window, TI.Q35, { Size = UDim2_new(Window.Size.X.Scale, Window.Size.X.Offset, 0, 40) }):Play()
+        else Sidebar.Visible = true; Content.Visible = true; local ts = maximized and UDim2_new(0, vpX, 0, vpY) or prevSize; TweenService:Create(Window, TI.Q35, { Size = ts }):Play() end
+    end)
+    MaxBtn.MouseButton1Click:Connect(function()
+        maximized = not maximized; minimized = false; Sidebar.Visible = true; Content.Visible = true
+        if maximized then prevSize = Window.Size; prevPos = Window.Position; Window.Position = UDim2_new(0, 0, 0, 0); TweenService:Create(Window, TI.Q35, { Size = UDim2_new(0, vpX, 0, vpY) }):Play()
+        else Window.Position = prevPos; TweenService:Create(Window, TI.Q35, { Size = prevSize }):Play() end
+    end)
+    CloseBtn.MouseButton1Click:Connect(closeWindow)
+    FloatBtn.MouseButton1Click:Connect(UIRefs.toggleMenu)
+
+    -- Dragging
+    local dragging, dragStart, winStart = false, nil, nil
+    TitleBar.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = true; dragStart = i.Position; winStart = Window.Position end end)
+    TitleBar.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+    UserInputService.InputChanged:Connect(function(i) if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then local d = i.Position - dragStart; Window.Position = UDim2_new(winStart.X.Scale, winStart.X.Offset + d.X, winStart.Y.Scale, winStart.Y.Offset + d.Y) end end)
+
+    -- Sidebar
+    local SID_W = 140
+    local Sidebar = mk("Frame", Window, { Size = UDim2_new(0, SID_W, 1, -40), Position = UDim2_new(0, 0, 0, 40), BackgroundColor3 = BG2, BackgroundTransparency = 0.6, BorderSizePixel = 0, ZIndex = 11 })
+    local Pill = mk("Frame", Sidebar, { Size = UDim2_new(0, 4, 0, 24), Position = UDim2_new(0, 6, 0, 16), BackgroundColor3 = ACC1, BorderSizePixel = 0, ZIndex = 13 })
+    corner(Pill, 2)
+    grad(Pill, ACC1, ACC2, 90)
+
+    local Content = mk("ScrollingFrame", Window, { Size = UDim2_new(1, -SID_W - 10, 1, -50), Position = UDim2_new(0, SID_W + 5, 0, 45), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = ACC1, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2_new(0, 0, 0, 0), BorderSizePixel = 0, ZIndex = 11 })
+    local cl = Instance_new("UIListLayout"); setListPad(cl, 10); pcall(function() cl.Parent = Content end)
+    local cp = Instance_new("UIPadding"); setUIPad(cp, 5, 10, 10, 10); pcall(function() cp.Parent = Content end)
+    enableTouchScroll(Content)
+
+    -- UI Elements
+    local function heading(p, t) 
+        local h = mk("TextLabel", p, { Size = UDim2_new(1, 0, 0, 24), BackgroundTransparency = 1, Text = t, Font = Enum.Font.GothamBold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left })
+        grad(h, TXT, SUB, 0)
+        return h 
+    end
+    local function card(p, h) 
+        local c = mk("Frame", p, { Size = UDim2_new(1, 0, 0, h), BackgroundColor3 = CARD, BackgroundTransparency = 0.2, BorderSizePixel = 0 })
+        corner(c, 12)
+        stroke(c, Color3_new(1,1,1), 1, 0.92)
+        c.MouseEnter:Connect(function() TweenService:Create(c, TI.Q25, { BackgroundTransparency = 0.1, Position = UDim2_new(0, 0, 0, -2) }):Play() end)
+        c.MouseLeave:Connect(function() TweenService:Create(c, TI.Q25, { BackgroundTransparency = 0.2, Position = UDim2_new(0, 0, 0, 0) }):Play() end)
+        return c 
+    end
+    local function infoCard(p, t, d)
+        local c = card(p, 60)
+        local ttl = mk("TextLabel", c, { Size = UDim2_new(1, -24, 0, 20), Position = UDim2_new(0, 12, 0, 10), BackgroundTransparency = 1, Text = t, Font = Enum.Font.GothamBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left })
+        grad(ttl, ACC1, ACC2, 0)
+        mk("TextLabel", c, { Size = UDim2_new(1, -24, 0, 20), Position = UDim2_new(0, 12, 0, 30), BackgroundTransparency = 1, Text = d, TextColor3 = SUB, Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true })
+        return c
+    end
+    local function toggleCard(p, t, d, def, cb)
+        local c = card(p, 54)
+        mk("TextLabel", c, { Size = UDim2_new(1, -80, 0, 18), Position = UDim2_new(0, 12, 0, 10), BackgroundTransparency = 1, Text = t, TextColor3 = TXT, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+        mk("TextLabel", c, { Size = UDim2_new(1, -80, 0, 16), Position = UDim2_new(0, 12, 0, 28), BackgroundTransparency = 1, Text = d, TextColor3 = SUB, Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+        
+        local tr = mk("Frame", c, { Size = UDim2_new(0, 44, 0, 24), Position = UDim2_new(1, -56, 0.5, -12), BackgroundColor3 = TRK, BorderSizePixel = 0 })
+        corner(tr, 12)
+        local kn = mk("Frame", tr, { Size = UDim2_new(0, 20, 0, 20), Position = def and UDim2_new(1, -22, 0.5, -10) or UDim2_new(0, 2, 0.5, -10), BackgroundColor3 = Color3_new(1, 1, 1), BorderSizePixel = 0 })
+        corner(kn, 999)
+        stroke(kn, Color3_new(0,0,0), 1, 0.8)
+        
+        local on = def
+        local b = mk("TextButton", c, { Size = UDim2_new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", ZIndex = 5 })
+        local function set(v) 
+            on = v
+            if v then grad(tr, ACC1, ACC2, 0) else pcall(function() tr:FindFirstChildOfClass("UIGradient"):Destroy() end) end
+            TweenService:Create(tr, TI.Q25, { BackgroundColor3 = on and ACC1 or TRK }):Play()
+            TweenService:Create(kn, TI.B25, { Position = on and UDim2_new(1, -22, 0.5, -10) or UDim2_new(0, 2, 0.5, -10) }):Play() 
+        end
+        if def then grad(tr, ACC1, ACC2, 0) end
+        b.MouseButton1Click:Connect(function() on = not on; set(on); pcall(cb, on) end)
+        return { Set = set }
+    end
+    local function sliderCard(p, t, d, min, max, def, cb)
+        local c = card(p, 70)
+        mk("TextLabel", c, { Size = UDim2_new(1, -80, 0, 18), Position = UDim2_new(0, 12, 0, 10), BackgroundTransparency = 1, Text = t, TextColor3 = TXT, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+        local V = mk("TextLabel", c, { Size = UDim2_new(0, 60, 0, 18), Position = UDim2_new(1, -72, 0, 10), BackgroundTransparency = 1, Text = tostring(def), Font = Enum.Font.GothamBlack, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Right })
+        grad(V, ACC1, ACC2, 0)
+        mk("TextLabel", c, { Size = UDim2_new(1, -24, 0, 16), Position = UDim2_new(0, 12, 0, 28), BackgroundTransparency = 1, Text = d, TextColor3 = SUB, Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+        
+        local tr = mk("Frame", c, { Size = UDim2_new(1, -24, 0, 6), Position = UDim2_new(0, 12, 0, 52), BackgroundColor3 = TRK, BorderSizePixel = 0 })
+        corner(tr, 3)
+        local fl = mk("Frame", tr, { Size = UDim2_new(math_clamp((def - min) / (max - min), 0, 1), 0, 1, 0), BackgroundColor3 = ACC1, BorderSizePixel = 0 })
+        corner(fl, 3)
+        grad(fl, ACC1, ACC2, 0)
+        local kn = mk("Frame", fl, { Size = UDim2_new(0, 16, 0, 16), Position = UDim2_new(1, -8, 0.5, -8), BackgroundColor3 = Color3_new(1, 1, 1), BorderSizePixel = 0 })
+        corner(kn, 999)
+        stroke(kn, ACC1, 2, 0.5)
+        
+        local dr = false
+        local function upd(ip) if tr.AbsoluteSize.X <= 0 then return end; local r = math_clamp((ip.Position.X - tr.AbsolutePosition.X) / tr.AbsoluteSize.X, 0, 1); fl.Size = UDim2_new(r, 0, 1, 0); local v = math_floor(min + (max - min) * r); V.Text = tostring(v); pcall(function() cb(v) end) end
+        local function set(v) v = math_clamp(v, min, max); fl.Size = UDim2_new((v - min) / (max - min), 0, 1, 0); V.Text = tostring(v); pcall(function() cb(v) end) end
+        tr.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dr = true; upd(i) end end)
+        tr.InputEnded:Connect(function() dr = false end)
+        UserInputService.InputChanged:Connect(function(i) if dr and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then upd(i) end end)
+        return { set = set }
+    end
+    local function buttonCard(p, t, cb, col, half)
+        local c = mk("Frame", p, { Size = half and UDim2_new(0.5, -5, 0, 42) or UDim2_new(1, 0, 0, 42), BackgroundColor3 = col or CARD, BackgroundTransparency = col and 0.1 or 0.2, BorderSizePixel = 0 })
+        corner(c, 10)
+        stroke(c, lighten(col or CARD, 0.1), 1, 0.8)
+        if col then grad(c, col, lighten(col, 0.1), 90) end
+        
+        local b = mk("TextButton", c, { Size = UDim2_new(1, 0, 1, 0), BackgroundTransparency = 1, Text = t, TextColor3 = TXT, Font = Enum.Font.GothamBold, TextSize = 13, ZIndex = 5 })
+        b.MouseEnter:Connect(function() TweenService:Create(c, TI.Q25, { BackgroundTransparency = col and 0 or 0.1 }):Play() end)
+        b.MouseLeave:Connect(function() TweenService:Create(c, TI.Q25, { BackgroundTransparency = col and 0.1 or 0.2 }):Play() end)
+        b.MouseButton1Down:Connect(function() TweenService:Create(c, TI.Q25, { Size = c.Size - UDim2_new(0, 4, 0, 4), Position = c.Position + UDim2_new(0, 2, 0, 2) }):Play() end)
+        b.MouseButton1Up:Connect(function() TweenService:Create(c, TI.Q25, { Size = half and UDim2_new(0.5, -5, 0, 42) or UDim2_new(1, 0, 0, 42), Position = UDim2_new(0,0,0,0) }):Play() end)
+        b.MouseButton1Click:Connect(function() pcall(cb) end)
+        return c
+    end
+    local function rowHalf(p) local r = mk("Frame", p, { Size = UDim2_new(1, 0, 0, 42), BackgroundTransparency = 1 }); local l = Instance_new("UIListLayout"); pcall(function() l.FillDirection = Enum.FillDirection.Horizontal end); setListPad(l, 10); pcall(function() l.Parent = r end); return r end
+    
+    local Pages = {}
+    local function mkPage(id) local p = mk("Frame", Content, { Size = UDim2_new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Visible = false }); local l = Instance_new("UIListLayout"); setListPad(l, 12); pcall(function() l.SortOrder = Enum.SortOrder.LayoutOrder end); pcall(function() l.Parent = p end); Pages[id] = p; return p end
+    
+    local TABS = { { id = "Farm", icon = "🚜", name = "Auto Farm" }, { id = "Mode", icon = "🎛", name = "Steal Mode" }, { id = "Zone", icon = "🗺", name = "Teleport" }, { id = "Nest", icon = "🏠", name = "Ổ Trứng" }, { id = "View", icon = "👁", name = "Hiển Thị" }, { id = "Set", icon = "⚙️", name = "Cài Đặt" } }
+    local tabBtns = {}
+    local currentTab = nil
+    local function switchTab(id) currentTab = id; for k, p in pairs(Pages) do p.Visible = (k == id) end; for _, tb in ipairs(tabBtns) do local a = (tb.id == id); tb.lbl.TextColor3 = a and TXT or SUB end end
+    for order, tab in ipairs(TABS) do
+        local b = mk("TextButton", Sidebar, { Size = UDim2_new(1, -12, 0, 36), Position = UDim2_new(0, 6, 0, (order-1)*42 + 10), BackgroundTransparency = 1, ZIndex = 12, AutoButtonColor = false })
+        corner(b, 8)
+        mk("TextLabel", b, { Size = UDim2_new(0, 24, 1, 0), Position = UDim2_new(0, 12, 0, 0), BackgroundTransparency = 1, Text = tab.icon, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 13 })
+        local lbl = mk("TextLabel", b, { Size = UDim2_new(1, -40, 1, 0), Position = UDim2_new(0, 38, 0, 0), BackgroundTransparency = 1, Text = tab.name, TextColor3 = SUB, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 13 })
+        table_insert(tabBtns, { id = tab.id, sel = Pill, lbl = lbl })
+        b.MouseEnter:Connect(function() TweenService:Create(b, TI.Q25, { BackgroundColor3 = BG1, BackgroundTransparency = 0.5 }):Play() end)
+        b.MouseLeave:Connect(function() if currentTab ~= tab.id then TweenService:Create(b, TI.Q25, { BackgroundTransparency = 1 }):Play() end end)
+        b.MouseButton1Click:Connect(function() 
+            TweenService:Create(Pill, TI.Q35, { Position = UDim2_new(0, 6, 0, (order-1)*42 + 16) }):Play()
+            TweenService:Create(b, TI.Q25, { BackgroundColor3 = BG1, BackgroundTransparency = 0.3 }):Play()
+            for _, ob in ipairs(tabBtns) do if ob.id ~= tab.id then TweenService:Create(ob.lbl.Parent, TI.Q25, { BackgroundTransparency = 1 }):Play() end end
+            switchTab(tab.id) 
+        end)
+        mkPage(tab.id)
+    end
+
+    local StatusFrame = mk("Frame", Sidebar, { Size = UDim2_new(1, -12, 0, 40), Position = UDim2_new(0, 6, 1, -46), BackgroundColor3 = BG1, BackgroundTransparency = 0.4, BorderSizePixel = 0, ZIndex = 12 })
+    corner(StatusFrame, 8)
+    stroke(StatusFrame, ACC1, 1, 0.8)
+    local StatusLbl = mk("TextLabel", StatusFrame, { Size = UDim2_new(1, -12, 1, 0), Position = UDim2_new(0, 6, 0, 0), BackgroundTransparency = 1, Text = "🟢 Sẵn sàng", TextColor3 = Color3_fromRGB(140, 230, 150), Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true })
+    SetStatus = function(m) if not State.ShowStatus then return end; pcall(function() StatusLbl.Text = m end) end
+
+    -- Pages Content
+    local pFarm = Pages.Farm
+    heading(pFarm, "Auto Farm")
+    infoCard(pFarm, "Hệ Thống Auto Cướp & Giao", "Cướp → về ổ → nộp. Chống kẹt, tự nhảy, tự quét.")
+    toggleCard(pFarm, "Bật Auto Cướp & Giao Trứng", "Tự động hoàn toàn (phím P)", false, function(v) if v then State.FarmMode = "auto"; StartFarm(); Notify("info", "🚜 FARM", "Đang chạy!", 3) else State.FarmMode = "off" end end)
+    toggleCard(pFarm, "Ghost Mode (tránh player)", "Dừng khi có người gần", false, function(v) State.Ghost = v end)
+    toggleCard(pFarm, "Speed Pulse (±10%)", "Dao động khó phát hiện", false, function(v) if State.KickShield and v then Notify("warn", "🛡 SHIELD", "Tắt shield trước!", 2); return end; State.SpeedPulse = v end)
+    toggleCard(pFarm, "🌀 Speed Cycle (anti-detect)", "Xen kẽ cao/an toàn", false, function(v) State.SpeedCycle = v end)
+    toggleCard(pFarm, "🏃 Auto Flee (trốn truy đuổi)", "Tăng tốc khi cầm trứng", false, function(v) State.AutoFlee = v end)
+    sliderCard(pFarm, "⏱ Chu kỳ nhanh (s)", "(5-60)", 5, 60, State.CycleHigh, function(v) State.CycleHigh = v end)
+    sliderCard(pFarm, "🛡 Chu kỳ an toàn (s)", "(3-30)", 3, 30, State.CycleSafe, function(v) State.CycleSafe = v end)
+    local speedCtl = sliderCard(pFarm, "Speed đi bộ", "(16-400) ghi đè mỗi frame", WALK_SPEED_MIN, WALK_SPEED_MAX, State.FarmSpeed, function(v) State.FarmSpeed = v; ApplySpeedNow() end)
+    sliderCard(pFarm, "Bán kính quét", "(500-3000)", 500, 3000, State.Radius, function(v) State.Radius = v end)
+    local srow = rowHalf(pFarm)
+    buttonCard(srow, "➕ +50 Speed", function() speedCtl.set(State.FarmSpeed + 50); Notify("info", "🚶 SPEED", "Walk " .. State.FarmSpeed, 2) end, Color3_fromRGB(60, 130, 90), true)
+    buttonCard(srow, "➖ -50 Speed", function() speedCtl.set(State.FarmSpeed - 50); Notify("info", "🚶 SPEED", "Walk " .. State.FarmSpeed, 2) end, Color3_fromRGB(125, 65, 65), true)
+
+    local pMode = Pages.Mode
+    heading(pMode, "Steal Mode")
+    infoCard(pMode, "Chế Độ Cướp (Miranda-style)", "Walk • Teleguiado • Instant.")
+    local modeLabel = mk("TextLabel", pMode, { Size = UDim2_new(1, 0, 0, 20), BackgroundTransparency = 1, Text = "Mode: 🚶 Walk", TextColor3 = SUB, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left })
+    local function SetMode(m) if State.KickShield and m ~= "walk" then Notify("warn", "🛡 SHIELD", "Tắt shield!", 3); return end; State.StealMode = m; teleActive = false; local pr = "🚶 Walk"; if m == "tele" then pr = "🌀 Teleguiado" elseif m == "instant" then pr = "⚡ Instant" end; modeLabel.Text = "Mode: " .. pr; Notify("info", "🎛 MODE", pr, 3) end
+    local mrow = rowHalf(pMode)
+    buttonCard(mrow, "🚶 Walk", function() SetMode("walk") end, Color3_fromRGB(45, 95, 185), true)
+    buttonCard(mrow, "🌀 Teleguiado", function() SetMode("tele") end, Color3_fromRGB(120, 80, 180), true)
+    local mrow2 = rowHalf(pMode)
+    buttonCard(mrow2, "⚡ Instant", function() SetMode("instant") end, Color3_fromRGB(180, 60, 60), true)
+    buttonCard(mrow2, "🔍 Find Instant", function() local z = FindInstantZone(); if z then State.InstantZone = z; Notify("success", "📍 FOUND", "Đã chốt!", 3) else Notify("warn", "📍 NOT", "Không thấy", 2) end end, Color3_fromRGB(90, 90, 140), true)
+    toggleCard(pMode, "Stand in Instant Area", "Đứng vùng instant", false, function(v) State.UseInstantZone = v end)
+    local teleCtl = sliderCard(pMode, "Tele Speed (tween)", "(20-275)", TELE_SPEED_MIN, TELE_SPEED_MAX, State.TeleSpeed, function(v) State.TeleSpeed = v end)
+    local trow = rowHalf(pMode)
+    buttonCard(trow, "➕ +25 Tele", function() teleCtl.set(State.TeleSpeed + 25); Notify("info", "🌀 TELE", "Tele " .. State.TeleSpeed, 2) end, Color3_fromRGB(60, 130, 90), true)
+    buttonCard(trow, "➖ -25 Tele", function() teleCtl.set(State.TeleSpeed - 25); Notify("info", "🌀 TELE", "Tele " .. State.TeleSpeed, 2) end, Color3_fromRGB(125, 65, 65), true)
+    heading(pMode, "Mode Actions")
+    buttonCard(pMode, "🌀 Tele + Cướp trứng gần nhất", ActionTeleSteal, Color3_fromRGB(120, 80, 180))
+    buttonCard(pMode, "🏠 Tele về ổ / vùng an toàn", ActionTeleToNest, Color3_fromRGB(45, 95, 185))
+    buttonCard(pMode, "⚡ Instant Steal gần nhất", ActionInstantSteal, Color3_fromRGB(180, 60, 60))
+
+    local pZone = Pages.Zone
+    heading(pZone, "Dịch Chuyển")
+    infoCard(pZone, "Zone + POI (object update mới)", "SafeTele hình cung, timeout thích ứng.")
+    buttonCard(pZone, "🔍 Quét lại Zone + POI", function() ScanZones(); Notify("success", "🗺 ĐÃ QUÉT", CountZones() .. " zone", 3) end, Color3_fromRGB(90, 90, 140))
+    heading(pZone, "POI Update Mới")
+    buttonCard(pZone, "🌀 Tele Khe Nứt (Rift)", function() TeleportToPoi("Rift") end, Color3_fromRGB(120, 80, 180))
+    buttonCard(pZone, "🧬 Tele Máy Hợp Nhất", function() TeleportToPoi("Merge") end, Color3_fromRGB(90, 90, 140))
+    buttonCard(pZone, "💰 Tele Bàn Bán", function() TeleportToPoi("Sell") end, Color3_fromRGB(185, 135, 45))
+    buttonCard(pZone, "🥚 Tele Lò Ấp", function() TeleportToPoi("Incubator") end, Color3_fromRGB(45, 95, 185))
+    buttonCard(pZone, "🛡 Tele Vùng An Toàn", function() TeleportToPoi("Safe") end, Color3_fromRGB(60, 130, 90))
+    heading(pZone, "Zones")
+    for _, zn in ipairs(ZONE_NAMES) do buttonCard(pZone, "🗺 " .. zn, function() TeleportToZone(zn) end, Color3_fromRGB(45, 95, 185)) end
+
+    local pNest = Pages.Nest
+    heading(pNest, "Ổ Trứng")
+    infoCard(pNest, "Quản Lý Ổ", "Lưu ổ giao / ổ lấy.")
+    buttonCard(pNest, "🏠 Lưu Ổ Giao", function() SaveSafeNest(); Notify("success", "🏠 ĐÃ LƯU", "Ổ giao chốt!", 3) end, Color3_fromRGB(45, 95, 185))
+    buttonCard(pNest, "🧹 Xóa Ổ Giao", function() State.SafeNest = nil; Notify("info", "🧹", "Đã xóa", 2) end, Color3_fromRGB(125, 55, 55))
+    buttonCard(pNest, "🥚 Lưu Ổ Lấy", function() SaveSpawnNest(); Notify("success", "🥚 ĐÃ LƯU", "Ổ lấy chốt!", 3) end, Color3_fromRGB(185, 135, 45))
+    buttonCard(pNest, "🧹 Xóa Ổ Lấy", function() State.SpawnNest = nil; Notify("info", "🧹", "Đã xóa", 2) end, Color3_fromRGB(125, 55, 55))
+
+    local pView = Pages.View
+    heading(pView, "Hiển Thị")
+    toggleCard(pView, "Hiện Notify", "Toast góc phải", true, function(v) State.ShowNotify = v end)
+    toggleCard(pView, "Hiện Status", "Trạng thái cuối sidebar", true, function(v) State.ShowStatus = v; StatusFrame.Visible = v end)
+    toggleCard(pView, "Blur nền khi mở menu", "Mờ game", false, function(v) State.BlurOn = v; applyBlur() end)
+    toggleCard(pView, "Hiển thị nút float 🍋", "Nút mở/đóng", true, function(v) State.ShowFloat = v; FloatBtn.Visible = v end)
+    toggleCard(pView, "🥚 ESP Trứng", "Highlight trứng cướp", false, function(v) State.EspEggs = v; if not v then ClearEggEsp() end end)
+    toggleCard(pView, "👤 ESP Người chơi", "Highlight player khác", false, function(v) State.EspPlayers = v; if not v then ClearPlayerEsp() end end)
+
+    local pSet = Pages.Set
+    heading(pSet, "Cài Đặt")
+    infoCard(pSet, "🍋 LEMON HUB " .. VERSION, "VIP: Config + Keybinds + ServerHop + FPS + POI.")
+    local statCard = card(pSet, 80)
+    local eggStolenLbl = mk("TextLabel", statCard, { Size = UDim2_new(0.5, -12, 0, 20), Position = UDim2_new(0, 12, 0, 12), BackgroundTransparency = 1, Text = "🥚 Cướp: 0", TextColor3 = TXT, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left })
+    local eggPlacedLbl = mk("TextLabel", statCard, { Size = UDim2_new(0.5, -12, 0, 20), Position = UDim2_new(0.5, 0, 0, 12), BackgroundTransparency = 1, Text = "🏠 Giao: 0", TextColor3 = TXT, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left })
+    local rateLbl = mk("TextLabel", statCard, { Size = UDim2_new(1, -24, 0, 20), Position = UDim2_new(0, 12, 0, 40), BackgroundTransparency = 1, Text = "⏱ 0.0 trứng/phút • FPS 60", TextColor3 = SUB, Font = Enum.Font.GothamMedium, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left })
+    toggleCard(pSet, "🔁 Auto Rejoin khi bị kick", "Tự vào lại", true, function(v) State.AutoRejoin = v end)
+    toggleCard(pSet, "😴 Anti-AFK (VirtualUser)", "Rủi ro, mặc tắt", false, function(v) State.AntiAFK = v; SetAntiAFK(v) end)
+    buttonCard(pSet, "🌐 Server Hop (server mới)", function() pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end) end, Color3_fromRGB(45, 95, 185))
+    local cfRow = rowHalf(pSet)
+    buttonCard(cfRow, "💾 Lưu Config", SaveConfig, Color3_fromRGB(60, 130, 90), true)
+    buttonCard(cfRow, "📂 Tải Config", LoadConfig, Color3_fromRGB(185, 135, 45), true)
+    buttonCard(pSet, "🛡 Bật Kick Shield", ApplyKickShield, Color3_fromRGB(60, 160, 90))
+    buttonCard(pSet, "🕵️ Quét script ngoại lai", function() local c = DetectConflictingScripts(); if #c > 0 then Notify("warn", "🕵️ THẤY", table_concat(c, ", "), 6) else Notify("success", "🕵️ SẠCH", "OK", 3) end end, Color3_fromRGB(90, 90, 140))
+    buttonCard(pSet, "🗑 Hủy script", function() scriptAlive = false; State.FarmMode = "off"; teleActive = false; SetAntiAFK(false); ClearEggEsp(); ClearPlayerEsp(); pcall(function() Gui:Destroy() end) end, Color3_fromRGB(145, 30, 30))
+
+    task_spawn(function()
+        while scriptAlive and Gui and Gui.Parent do
+            task_wait(1)
+            pcall(function()
+                if eggStolenLbl then eggStolenLbl.Text = "🥚 Cướp: " .. State.EggsStolen end
+                if eggPlacedLbl then eggPlacedLbl.Text = "🏠 Giao: " .. State.EggsPlaced end
+                if rateLbl then
+                    local em = (os_clock() - State.SessionStart) / 60
+                    local r = em > 0 and (State.EggsPlaced / em) or 0
+                    rateLbl.Text = string_format("⏱ %.1f trứng/phút • FPS %d", r, math_floor(fpsSmooth))
+                end
+            end)
+        end
+    end)
+    task_spawn(function() while scriptAlive do task_wait(2); if Gui and not Gui.Parent then SafeParent(Gui) end end end)
+    switchTab("Farm")
+    Notify("success", "🍋 LEMON HUB " .. VERSION, "PREMIUM GLASS UI - bản MỚI!", 5)
+    local cf = DetectConflictingScripts()
+    if #cf > 0 then Notify("warn", "🕵️ NGOẠI LAI", table_concat(cf, ", "), 6) end
+    Log(LOG_LEVEL.INFO, "UI OK")
+end
+
+-- ==============================================================================
+-- 14. BOOT
+-- ==============================================================================
+Log(LOG_LEVEL.INFO, "Booting UI...")
+local bootOk = false
+for a = 1, 3 do
+    local ok, err = pcall(BuildUI)
+    if ok then bootOk = true; break else Log(LOG_LEVEL.ERROR, "BOOT ERR #" .. a .. " " .. tostring(err)); showFatal(tostring(err)); task_wait(1) end
+end
+if not bootOk then Log(LOG_LEVEL.ERROR, "BOOT FAIL") end
+Log(LOG_LEVEL.INFO, "HOÀN TẤT bootOk=" .. tostring(bootOk) .. " version=" .. VERSION)
